@@ -71,7 +71,14 @@ class Page:
 
 def _level_matches(job, level: str) -> bool:
     """The seniority filter: "" any, "junior-mid", "senior", or "none" (posting doesn't say)."""
-    return not level or job["seniority"] == (None if level == "none" else level)
+    return not level or (job["seniority"] or "none") == level
+
+
+def _level_counts(jobs) -> Counter:
+    """Postings per level, for the level dropdown: {"": all, "junior-mid": n, "senior": n, "none": n}."""
+    counts = Counter(j["seniority"] or "none" for j in jobs)
+    counts[""] = len(jobs)
+    return counts
 
 
 def _page_url(pg: Page, page: int) -> str:
@@ -134,7 +141,7 @@ def create_app() -> Flask:
         sent = c.execute("SELECT COUNT(*) FROM outreach WHERE sent_on >= date('now', '-7 day')").fetchone()[0]
         kinds = {r["key"]: r for r in c.execute("SELECT key, id, kind, startup, stage FROM companies")}
         return render_template("today.html", jobs=jobs_, companies=companies_, followups=followups,
-                               pg=Page(shown, 10), shown=shown, level=level,
+                               pg=Page(shown, 10), shown=shown, level=level, per_level=_level_counts(jobs_),
                                cpg=Page(companies_, 10, "cpage"),
                                tpg=Page(targets, 10, "tpage"),
                                targets=targets, counts=counts, sent=sent, last_run=last_run, kinds=kinds,
@@ -216,12 +223,6 @@ def create_app() -> Flask:
             params += [f"%{q}%"] * 3
         if request.args.get("startup") == "1":
             sql += " AND company_key IN (SELECT key FROM companies WHERE startup = 1)"
-        level = request.args.get("level", "")
-        if level in ("junior-mid", "senior"):
-            sql += " AND seniority = ?"
-            params.append(level)
-        elif level == "none":
-            sql += " AND seniority IS NULL"
         rcheck = request.args.get("rcheck", "")
         if rcheck in ("0", "1"):
             sql += " AND remote_check = ?"
@@ -232,18 +233,24 @@ def create_app() -> Flask:
             sql += " AND COALESCE(remote, 0) = 0 AND lower(location) NOT LIKE '%remote%'"
         sql += " ORDER BY score DESC, first_seen DESC"
         country = request.args.get("country", "")
-        # Location is free text, so the country filter runs here; the counts cover every other filter.
-        rows, per_country = [], Counter()
+        level = request.args.get("level", "")
+        # Country and level filter here, so each dropdown can count postings under every *other* filter.
+        rows, per_country, per_level = [], Counter(), Counter()
         for r in c.execute(sql, params):
             cs = countries(r["location"], r["remote"])
-            per_country.update(cs)
-            if not country or country in cs:
+            in_country, in_level = not country or country in cs, _level_matches(r, level)
+            if in_level:
+                per_country.update(cs)
+            if in_country:
+                per_level[r["seniority"] or "none"] += 1
+                per_level[""] += 1
+            if in_country and in_level:
                 rows.append(r)
         kinds = {r["key"]: r for r in c.execute("SELECT key, id, kind, startup, stage FROM companies")}
         return render_template("jobs.html", pg=Page(rows, 20), status=status, min_score=min_score,
                                q=q, remote=remote, kinds=kinds, startup=request.args.get("startup", ""),
                                country=country, per_country=per_country.most_common(), rcheck=rcheck,
-                               level=level)
+                               level=level, per_level=per_level)
 
     @app.get("/jobs/<int:job_id>")
     def job(job_id):

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import score, job_status, pager with context %}
+{% from "macros.html" import score, job_status, pager, level_select with context %}
 {% block title %}Today · jobhunt{% endblock %}
 {% block body %}
 <div class="grid">
@@ -33,12 +33,7 @@
     <div class="row">
       <form method="get" class="inline">
         {% for k, v in request.args.items() if k not in ('level', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
-        <select name="level" class="autosubmit">
-          <option value="" {{ 'selected' if not level }}>all levels</option>
-          <option value="junior-mid" {{ 'selected' if level == 'junior-mid' }}>junior–mid (up to 3 years)</option>
-          <option value="senior" {{ 'selected' if level == 'senior' }}>senior (4+ years)</option>
-          <option value="none" {{ 'selected' if level == 'none' }}>level not stated</option>
-        </select>
+        {{ level_select(level, per_level) }}
       </form>
       {% if shown %}
       <form method="post" action="/inbox/seen">

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import score, job_status, pager with context %}
+{% from "macros.html" import score, job_status, pager, level_select with context %}
 {% block title %}Jobs · jobhunt{% endblock %}
 {% block body %}
 <form class="filters" method="get">
@@ -16,12 +16,7 @@
     <option value="1" {{ 'selected' if remote == '1' }}>remote only</option>
     <option value="0" {{ 'selected' if remote == '0' }}>on-site / hybrid only</option>
   </select>
-  <select name="level" class="autosubmit">
-    <option value="" {{ 'selected' if not level }}>all levels</option>
-    <option value="junior-mid" {{ 'selected' if level == 'junior-mid' }}>junior–mid (up to 3 years)</option>
-    <option value="senior" {{ 'selected' if level == 'senior' }}>senior (4+ years)</option>
-    <option value="none" {{ 'selected' if level == 'none' }}>level not stated</option>
-  </select>
+  {{ level_select(level, per_level) }}
   <select name="rcheck" class="autosubmit">
     <option value="" {{ 'selected' if not rcheck }}>from Lisbon: confirmed + to check</option>
     <option value="0" {{ 'selected' if rcheck == '0' }}>from Lisbon: confirmed only</option>
