@@ -11,7 +11,7 @@ from urllib.parse import quote_plus
 
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
-from . import db, inbox, llm
+from . import db, inbox, llm, salary
 from .core import CANCEL, countries, load_profile
 
 _pool = ThreadPoolExecutor(3)
@@ -266,7 +266,12 @@ def create_app() -> Flask:
         others = c.execute("SELECT id, source, url FROM jobs WHERE dedup_key = ? AND id != ?",
                            (j["dedup_key"], job_id)).fetchall()
         company = c.execute("SELECT * FROM companies WHERE key = ?", (j["company_key"],)).fetchone()
-        return render_template("job.html", j=j, others=others, company=company)
+        # Another site's copy of the same role may state the salary when this one doesn't.
+        copies = [j, *c.execute("SELECT salary, description FROM jobs WHERE dedup_key = ? AND id != ?",
+                                (j["dedup_key"], job_id))]
+        pay, from_desc = next((r for r in (salary.salary(x["salary"], x["description"]) for x in copies) if r[0]),
+                              (None, False))
+        return render_template("job.html", j=j, others=others, company=company, pay=pay, pay_from_desc=from_desc)
 
     @app.post("/jobs/<int:job_id>/status")
     def job_status(job_id):
