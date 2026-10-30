@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "macros.html" import task_state with context %}
+{% block title %}Profile · jobhunt{% endblock %}
+{% block body %}
+<style>
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.wide { grid-column: 1 / -1; }
+.field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.field input, .field select, .field textarea { width: 100%; }
+.field .meta { font-weight: 400; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.checks label { display: flex; gap: 6px; align-items: center; }
+.suggested { border-color: var(--accent); background: var(--soft); }
+</style>
+
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <h2>Your CV</h2>
+      <p class="meta" style="margin:0">
+        {% if cv_chars %}Loaded{% if cv_name %} from {{ cv_name }}{% endif %} ({{ cv_chars }} characters). Claude reads it to judge
+        fit and write your messages.{% else %}No CV yet. Upload one and Claude fills in the form below for you to check.{% endif %}
+      </p>
+    </div>
+    <form method="post" action="/profile/cv" enctype="multipart/form-data" class="row">
+      <input type="file" name="cv" accept=".pdf,.docx,.txt,.md,.html,.htm" required>
+      <button class="primary" data-busy="Reading…">{{ 'Upload a new CV' if cv_chars else 'Upload CV' }}</button>
+    </form>
+  </div>
+  {{ task_state('cv') }}
+  {% if tasks.get('cv') == 'running' %}<p class="meta">Reading your CV takes about a minute.</p>{% endif %}
+</div>
+
+{% if suggested %}
+<div class="panel suggested row" style="justify-content:space-between">
+  <div><b>Claude filled the form from your CV.</b> Check every field and fix what's off, then press <b>Save profile</b>.
+    Nothing is used until you save.</div>
+  <form method="post" action="/profile/discard"><button>Discard suggestions</button></form>
+</div>
+{% endif %}
+{% if saved %}
+<div class="panel suggested">
+  {% if tasks.get('rescore') == 'running' %}<span class="working">Saved. Re-ranking every posting against your new profile (about 20 seconds)…</span>
+  <script>setTimeout(() => location.reload(), 5000)</script>
+  {% else %}Saved. Postings are ranked with your new profile; the next <b>Search</b> uses it too.{% endif %}
+</div>
+{% elif not has_profile and not suggested %}
+<div class="panel suggested">Welcome. Upload your CV above, or fill this in by hand, then save. Your profile and CV stay
+  on this computer (in <code>profile.yaml</code> and <code>data/</code>, which git ignores).</div>
+{% endif %}
+
+<form method="post" action="/profile">
+  <div class="panel">
+    <h2>What you're looking for</h2>
+    <div class="fields">
+      <div class="field wide"><span>Job types <span class="meta">· titles of the types you don't tick are hidden</span></span>
+        <div class="checks">
+          {% for key, r in roles.items() %}
+          <label><input type="checkbox" name="roles" value="{{ key }}" {{ 'checked' if key in p.roles }}> {{ r.label }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <label class="field"><span>Searches <span class="meta">· one per line, used on LinkedIn and the job boards</span></span>
+        <textarea name="search_terms" rows="5" placeholder="python backend&#10;django developer">{{ p.search_terms|join('\n') }}</textarea></label>
+      <label class="field"><span>Experience in these roles (years) <span class="meta">· postings asking for more rank lower</span></span>
+        <input type="number" name="experience_years" min="0" max="40" value="{{ p.experience_years }}">
+        <span class="meta">Count real jobs in this field. Different experience (other field, freelance, studies) goes in the note.</span>
+        <textarea name="experience_note" rows="3" placeholder="e.g. 3 years of Python, but on data tooling, not web backend">{{ p.experience_note }}</textarea></label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Skills</h2>
+    <div class="fields">
+      <label class="field"><span>Skills and points <span class="meta">· one per line; a posting that mentions it gets the points</span></span>
+        <textarea name="skills" rows="12" placeholder="python: 18&#10;django: 8&#10;postgres: 5">{% for k, v in p.skills.items() %}{{ k }}: {{ v }}
+{% endfor %}</textarea>
+        <span class="meta">15–18 for your main language, 6–10 for what you use often, 2–5 for familiar.</span></label>
+      <div class="fields" style="grid-template-columns:1fr; align-content:start">
+        <label class="field"><span>Must mention one of <span class="meta">· comma-separated; postings without any lose points</span></span>
+          <input name="must_have" value="{{ p.must_have|join(', ') }}" placeholder="python"></label>
+        <label class="field"><span>Hide titles with <span class="meta">· tech you don't want to work in</span></span>
+          <input name="avoid" value="{{ p.avoid|join(', ') }}" placeholder="java, php, .net"></label>
+        <label class="field"><span>Languages you speak <span class="meta">· postings needing others lose points</span></span>
+          <input name="languages" value="{{ p.languages|join(', ') }}" placeholder="english, portuguese"></label>
+        <label class="field"><span>Never show these companies <span class="meta">· e.g. your current employer</span></span>
+          <input name="exclude_companies" value="{{ p.exclude_companies|join(', ') }}"></label>
+        <label class="field"><span>Minimum score to show a posting</span>
+          <input type="number" name="min_score" min="0" max="100" value="{{ p.min_score }}"></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Where you work from</h2>
+    <div class="fields">
+      <label class="field"><span>City</span><input name="city" value="{{ p.location.city }}" placeholder="Lisbon"></label>
+      <label class="field"><span>Country</span>
+        <select name="country"><option value="">choose…</option>
+          {% for c in countries %}<option {{ 'selected' if c == p.location.country }}>{{ c }}</option>{% endfor %}</select></label>
+      <label class="field"><span>Towns that count as your city <span class="meta">· comma-separated</span></span>
+        <input name="nearby" value="{{ p.location.nearby|join(', ') }}" placeholder="lisboa, oeiras, cascais"></label>
+      <label class="field"><span>Other cities you'd go to on-site</span>
+        <input name="onsite_elsewhere" value="{{ p.location.onsite_elsewhere|join(', ') }}"></label>
+      <label class="field wide" style="flex-direction:row; align-items:center; gap:8px">
+        <input type="checkbox" name="remote" value="1" {{ 'checked' if p.location.remote }} style="width:auto">
+        <span style="color:var(--ink); font-weight:400">Open to remote roles at companies elsewhere in Europe</span></label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>About you <span class="meta">· used by Claude for assessments and the messages it drafts</span></h2>
+    <div class="fields">
+      <label class="field"><span>Name</span><input name="name" value="{{ p.name }}"></label>
+      <label class="field"><span>Email</span><input name="email" value="{{ p.email }}"></label>
+      <label class="field"><span>LinkedIn</span><input name="linkedin_url" value="{{ p.linkedin_url }}"></label>
+      <label class="field"><span>GitHub</span><input name="github_url" value="{{ p.github_url }}"></label>
+      <label class="field wide"><span>Your story <span class="meta">· a few sentences in your own words; drafts never claim anything that isn't here or in the CV</span></span>
+        <textarea name="story" rows="6">{{ p.story }}</textarea></label>
+    </div>
+  </div>
+
+  <p><button class="primary">Save profile</button></p>
+</form>
+{% endblock %}

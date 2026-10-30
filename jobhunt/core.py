@@ -48,7 +48,10 @@ class Job:
 
 
 def load_profile() -> dict:
-    return yaml.safe_load(PROFILE_PATH.read_text())
+    """Your profile.yaml expanded into every setting the app reads (see profile.py)."""
+    from .profile import load
+
+    return load()
 
 
 def load_seed_companies() -> list[dict]:
@@ -57,8 +60,11 @@ def load_seed_companies() -> list[dict]:
 
 @cache
 def cv_text() -> str:
-    path = Path(load_profile()["cv_file"]).expanduser()
-    if not path.exists():
+    """Your CV as text: the one uploaded on the Profile page, or `cv_file` in profile.yaml."""
+    if (DATA / "cv.txt").exists():
+        return (DATA / "cv.txt").read_text()
+    path = Path(load_profile().get("cv_file") or "").expanduser()
+    if not path.is_file():
         return ""
     raw = path.read_text()
     return html_to_text(raw) if path.suffix in {".html", ".htm"} else raw
@@ -188,7 +194,6 @@ _CODES = {"PT": "Portugal", "ES": "Spain", "FR": "France", "DE": "Germany", "GB"
           "IT": "Italy", "PL": "Poland", "RO": "Romania", "BG": "Bulgaria", "SE": "Sweden", "DK": "Denmark",
           "FI": "Finland", "NO": "Norway", "MX": "Mexico", "BR": "Brazil", "CL": "Chile"}
 _ANYWHERE = ("remote", "remoto", "worldwide", "anywhere", "global", "home based", "europe", "european", "emea", "eu")
-PORTUGAL_PLACES = _COUNTRIES["Portugal"]
 REMOTE_NO_COUNTRY = "Remote (no country)"
 UNKNOWN_COUNTRY = "Unknown"
 

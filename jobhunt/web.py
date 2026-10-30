@@ -7,11 +7,12 @@ import threading
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from urllib.parse import quote_plus
 
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
-from . import db, inbox, llm, salary
+from . import core, db, inbox, llm, profile, salary
 from .core import CANCEL, countries, load_profile
 
 _pool = ThreadPoolExecutor(3)
@@ -45,6 +46,29 @@ def _fetch_task(conn) -> None:
     from .pipeline import fetch
 
     fetch()
+
+
+def _rescore_task(conn) -> None:
+    from .scoring import refresh_company_stats, rescore_all
+
+    rescore_all(conn)
+    refresh_company_stats(conn, load_profile().get("min_score", 40))
+
+
+def _split(text: str, sep: str = ",") -> list[str]:
+    return [x.strip() for x in (text or "").replace("\r", "").split(sep) if x.strip()]
+
+
+def _skills(text: str) -> dict[str, int]:
+    """"python: 18" per line (or "python 18", or just "python" for 5 points)."""
+    out = {}
+    for line in _split(text, "\n"):
+        name, _, pts = line.rpartition(":") if ":" in line else line.rpartition(" ")
+        if not pts.strip().lstrip("-").isdigit():
+            name, pts = line, "5"
+        if name.strip():
+            out[name.strip().lower()] = int(pts)
+    return out
 
 
 def _loads(s, default=None):
@@ -95,8 +119,10 @@ def create_app() -> Flask:
     @app.context_processor
     def globals_():
         state = _fetch_state()
-        claude_running = sum(1 for k, v in _tasks.items() if k != "fetch" and v == "running")
-        return {"tasks": dict(_tasks), "fetching": state["running"], "fetch_step": state["step"],
+        claude_running = sum(1 for k, v in _tasks.items() if k not in ("fetch", "rescore") and v == "running")
+        prof = load_profile()
+        return {"home_city": prof["home_city"], "home_country": prof["country"], "has_profile": profile.exists(),
+                "tasks": dict(_tasks), "fetching": state["running"], "fetch_step": state["step"],
                 "fetch_cancelling": state["cancelling"],
                 "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
@@ -128,6 +154,67 @@ def create_app() -> Flask:
     @app.get("/")
     def home():
         return redirect(url_for("today"))
+
+    # ---------- profile ----------
+
+    @app.get("/profile")
+    def profile_page():
+        values = profile.editable()
+        suggested = profile.draft()
+        if suggested:
+            values.update({k: v for k, v in suggested.items() if k != "location"})
+            values["location"] = {**values["location"], **suggested.get("location", {})}
+        cv = core.cv_text()
+        return render_template("profile.html", p=values, suggested=suggested, roles=profile.ROLES,
+                               countries=sorted(core._COUNTRIES), cv_chars=len(cv),
+                               cv_name=next((f.name for f in sorted(core.DATA.glob("cv_upload.*"))), None),
+                               saved=request.args.get("saved"))
+
+    @app.post("/profile")
+    def profile_save():
+        f = request.form
+        profile.save({
+            **{k: f.get(k, "").strip() for k in ("name", "email", "linkedin_url", "github_url", "story", "experience_note")},
+            "experience_years": f.get("experience_years", 0, type=int),
+            "roles": f.getlist("roles"),
+            "skills": _skills(f.get("skills", "")),
+            "must_have": [x.lower() for x in _split(f.get("must_have", ""))],
+            "avoid": [x.lower() for x in _split(f.get("avoid", ""))],
+            "languages": [x.lower() for x in _split(f.get("languages", ""))],
+            "search_terms": _split(f.get("search_terms", ""), "\n"),
+            "location": {"city": f.get("city", "").strip(), "nearby": [x.lower() for x in _split(f.get("nearby", ""))],
+                         "country": f.get("country", ""), "remote": bool(f.get("remote")),
+                         "onsite_elsewhere": [x.lower() for x in _split(f.get("onsite_elsewhere", ""))]},
+            "exclude_companies": [x.lower() for x in _split(f.get("exclude_companies", ""))],
+            "min_score": f.get("min_score", 40, type=int),
+        })
+        profile.discard_draft()
+        _run("rescore", _rescore_task)  # every posting is ranked again against the new profile
+        return redirect(url_for("profile_page", saved=1))
+
+    @app.post("/profile/cv")
+    def profile_cv():
+        upload = request.files.get("cv")
+        suffix = Path(upload.filename or "").suffix.lower() if upload else ""
+        if suffix not in (".pdf", ".docx", ".txt", ".md", ".html", ".htm"):
+            abort(400, "Upload a PDF, Word (.docx), HTML, Markdown or text file.")
+        core.DATA.mkdir(exist_ok=True)
+        for old in core.DATA.glob("cv_upload.*"):
+            old.unlink()
+        path = core.DATA / f"cv_upload{suffix}"
+        upload.save(path)
+        text = profile.cv_to_text(path)
+        if len(text) < 200:
+            abort(400, "Couldn't read text from that file. If it's a scanned PDF, upload a text-based PDF or .docx.")
+        profile.CV_TEXT.write_text(text)
+        core.cv_text.cache_clear()
+        _run("cv", lambda conn: profile.from_cv(text))
+        return redirect(url_for("profile_page"))
+
+    @app.post("/profile/discard")
+    def profile_discard():
+        profile.discard_draft()
+        return redirect(url_for("profile_page"))
 
     # ---------- today ----------
 
@@ -362,11 +449,14 @@ def create_app() -> Flask:
                ORDER BY rejected IS NOT NULL, score DESC LIMIT 50""", (co["key"],)).fetchall()
         log_ = c.execute("SELECT * FROM outreach WHERE company_id = ? ORDER BY sent_on DESC", (cid,)).fetchall()
         name = co["name"]
+        p = load_profile()
+        where, role = p["country"], {"fullstack": "full stack", "ml": "machine learning"}.get(p["roles"][0], p["roles"][0])
+        role += " engineer"
         searches = {
             "CTO / Head of Engineering": f'"{name}" (CTO OR "Head of Engineering" OR "VP Engineering")',
             "Engineering managers": f'"{name}" "Engineering Manager"',
             "Tech recruiters": f'"{name}" ("Technical Recruiter" OR "Talent Acquisition")',
-            "Backend engineers (in Portugal)": f'"{name}" backend engineer Portugal',
+            f"Engineers ({where or 'anywhere'})": f'"{name}" {role} {where}'.strip(),
         }
         return render_template("company.html", co=co, jobs=jobs_, log=log_, searches=searches,
                                research=_loads(co["research"], {}), drafts=_loads(co["drafts"], {}),

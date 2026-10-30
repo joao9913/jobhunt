@@ -2,6 +2,7 @@
 # Only `name` is required. `ats`/`slug` are found by `jobhunt resolve` if left out
 # (ats: greenhouse | lever | ashby | smartrecruiters | workable | recruitee | personio).
 # kind: non-tech = business that isn't software but runs a real dev team.
+# This starter list leans towards Lisbon / Portugal and EU-remote; add or remove companies for your search.
 
 # --- Non-tech companies with tech hubs in Lisbon / Portugal ---
 - {name: Mercedes-Benz.io, kind: non-tech, note: "Mercedes-Benz digital hub in Lisbon"}
@@ -103,7 +104,7 @@
 - {name: Flink, kind: non-tech, startup: true}
 - {name: Getir, kind: non-tech}
 
-# --- Portuguese tech companies (Python-friendly, hire in Lisbon) ---
+# --- Portuguese tech companies (hire in Lisbon) ---
 - {name: Sword Health, kind: tech, startup: true}
 - {name: Unbabel, kind: tech, startup: true}
 - {name: Feedzai, kind: tech}
@@ -131,7 +132,7 @@
 - {name: Kraken, kind: tech}
 - {name: Bitpanda, kind: tech}
 
-# --- Portuguese / Lisbon startups and scale-ups (small teams, where your range is an advantage) ---
+# --- Portuguese / Lisbon startups and scale-ups (small teams) ---
 - {name: Coverflex, kind: tech, startup: true}
 - {name: Rauva, kind: tech, startup: true}
 - {name: Kevel, kind: tech, startup: true}

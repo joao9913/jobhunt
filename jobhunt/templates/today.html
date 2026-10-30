@@ -55,7 +55,7 @@
         <div class="meta">{% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
           · {{ j.location }}
           {% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why }}">{{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }}</span>{% endif %}
-          {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
+          {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from {{ home_country or 'your country' }}: ask the recruiter before applying">check remote</span>{% endif %}
           {% set a = j.assessment|loads %}{% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
           {% if co and co.startup %} <span class="pill startup">startup</span>{% endif %}
           {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}</div></td>

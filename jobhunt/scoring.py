@@ -6,7 +6,7 @@ import json
 import re
 import sqlite3
 
-from .core import PORTUGAL_PLACES, ascii_lower, has_term, load_profile
+from .core import ascii_lower, has_term, load_profile
 
 ENG_TITLE = re.compile(
     r"engineer|developer|programmer|software|backend|back-end|python|django|devops|\bsre\b|"
@@ -17,7 +17,7 @@ ENG_TITLE = re.compile(
 
 
 REMOTE_EU = re.compile(
-    r"remote[^.\n]{0,60}\b(europe|european|eu|emea|portugal|cet|cest|gmt|worldwide|anywhere)\b|"
+    r"remote[^.\n]{0,60}\b(europe|european|eu|emea|cet|cest|gmt|worldwide|anywhere)\b|"
     r"\b(europe|eu|emea)[^.\n]{0,30}remote", re.I)
 REMOTE_NON_EU = re.compile(
     r"(must|need to|required to) (be )?(located|based|reside|live) in the (us|u\.s\.|united states|usa|americas)|"
@@ -141,12 +141,15 @@ class Scorer:
         self.title_penalty = {k.lower(): v for k, v in (t.get("penalty") or {}).items()}
         self.skills = {k.lower(): v for k, v in p["skills"].items()}
         self.red_flags = [(re.compile(f["pattern"], re.I), f["points"], f["reason"]) for f in p.get("red_flags", [])]
-        loc = p["location"]
+        loc = p["location_match"]
         self.home = loc["home"]
         self.country = loc["country"]
-        self.other_onsite = loc.get("other_ok_onsite") or []
+        self.other_onsite = loc["other_ok_onsite"]
+        self.remote_wanted = loc["remote"]
         self.remote_ok = loc["remote_ok"]
         self.remote_reject = loc["remote_reject"]
+        self.city, self.country_name, self.places = p["home_city"], p["country"], p["country_places"]
+        self.must_have = [s.lower() for s in p.get("must_have") or []]
         self.excluded_companies = {s.lower() for s in p.get("exclude_companies", [])}
         self.my_years = p.get("experience_years", 1)
 
@@ -189,9 +192,9 @@ class Scorer:
         score += min(skill_pts, 55)
         if hits:
             reasons.append("skills: " + ", ".join(s for s in hits if self.skills[s] > 0))
-        if desc and "python" not in desc and "python" not in title:
+        if desc and self.must_have and not any(has_term(desc, w) or has_term(title, w) for w in self.must_have):
             score -= 15
-            reasons.append("no Python mentioned")
+            reasons.append(f"no {' / '.join(self.must_have)} mentioned")
         if not desc:
             reasons.append("no description yet")
 
@@ -211,13 +214,13 @@ class Scorer:
         return max(0, min(100, score)), reasons, None
 
     def remote_check(self, job: sqlite3.Row | dict) -> bool:
-        """True when the posting doesn't say whether it hires someone living in Lisbon: ask before applying."""
+        """True when the posting doesn't say whether it hires someone living where you do: ask before applying."""
         title, desc, location = ((job[k] or "").lower() for k in ("title", "description", "location"))
         return self._location(job, title, location, desc)[3]
 
-    # Returns (ok, points, reason, check). You live in Lisbon and won't move, so a posting is only ok if you
-    # can do it from there: Lisbon area (any mode), remote from Portugal, or remote open to Europe.
-    # `check` marks postings that don't say whether they hire from Portugal.
+    # Returns (ok, points, reason, check). You don't plan to move, so a posting is only ok if you can do it from
+    # home: your city's area (any mode), remote from your country, or remote open to Europe.
+    # `check` marks postings that don't say whether they hire from your country.
     def _location(self, job, title: str, location: str, desc: str) -> tuple[bool, int, str, bool]:
         remote = job["remote"]
         if re.search(r"\bhybrid\b|\bh[ií]brido\b|on-?site|presencial", title):
@@ -230,19 +233,21 @@ class Scorer:
         in_home = any(has_term(location, w) for w in self.home)
         in_country = in_home or any(has_term(location, w) for w in self.country)
         if in_home:
-            return True, 10, "Lisbon area", False
+            return True, 10, f"{self.city} area", False
         if in_country:
             if remote:
-                return True, 6, "Portugal remote", False
+                return True, 6, f"{self.country_name} remote", False
             place = ascii_lower(location)
-            elsewhere = [p for p in PORTUGAL_PLACES if p not in self.home and has_term(place, p)]
+            elsewhere = [p for p in self.places if has_term(place, p)]
             if elsewhere:
-                return False, 0, f"on-site/hybrid outside Lisbon: {location[:40]}", False
-            return True, 2, "Portugal (city not given)", True
+                return False, 0, f"on-site/hybrid outside {self.city}: {location[:40]}", False
+            return True, 2, f"{self.country_name} (city not given)", True
         if any(has_term(location, w) for w in self.other_onsite):
             return True, 0, "acceptable city", False
+        if remote and not self.remote_wanted:
+            return False, 0, "remote abroad (you only want local roles)", False
         if remote:
-            lives_there = _residency_outside_portugal(desc)
+            lives_there = _residency_elsewhere(desc, self.country_name)
             if any(has_term(text, w) for w in self.remote_ok) or REMOTE_EU.search(desc):
                 if lives_there:
                     return False, 0, "remote, but asks you to live in another country", False
@@ -259,16 +264,16 @@ class Scorer:
                     return False, 0, f"remote in {where}, posting in {lang}: local hires only", False
                 if lives_there:
                     return False, 0, f"remote in {where}, asks you to live there", False
-                return True, -8 if not desc else -4, f"remote, listed in {where} (check they hire from Portugal)", True
+                return True, -8 if not desc else -4, f"remote, listed in {where} (check they hire from {self.country_name or 'your country'})", True
             return True, 0, "remote (region unclear)", True
         if not location.strip():
             return True, -5, "location unknown", True
         return False, 0, f"on-site: {location[:40]}", False
 
 
-def _residency_outside_portugal(desc: str) -> bool:
+def _residency_elsewhere(desc: str, country: str) -> bool:
     m = RESIDENCY.search(desc)
-    return bool(m) and "portugal" not in desc[m.start():m.end() + 80]
+    return bool(m) and not (country and country.lower() in desc[m.start():m.end() + 80])
 
 
 def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:

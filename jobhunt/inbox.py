@@ -12,7 +12,7 @@ import sqlite3
 from .core import load_profile
 
 # Postings that are new to you: no copy of this role was ever seen or given a status,
-# and the company isn't ignored. Ones you can surely do from Lisbon come before ones to check.
+# and the company isn't ignored. Ones you can surely do from home come before ones to check.
 NEW_JOBS = """
 SELECT * FROM (
     SELECT j.*, ROW_NUMBER() OVER (PARTITION BY j.dedup_key ORDER BY length(COALESCE(j.description, '')) DESC) rn,

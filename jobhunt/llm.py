@@ -53,7 +53,7 @@ def _me() -> str:
     p = load_profile()
     rules = "\n".join(f"- {r}" for r in p.get("outreach_rules", []))
     return f"""<candidate>
-Name: {p['name']} · {p.get('linkedin', '')} · {p.get('github', '')}
+Name: {p['name']} · {p.get('linkedin_url', '')} · {p.get('github_url', '')}
 
 CV:
 {cv_text()}
@@ -61,7 +61,8 @@ CV:
 Story (in their words):
 {p.get('story', '')}
 
-Experience, as they count it: {p.get('experience_years', 1)} year(s) of professional backend/Python.
+Experience, as they count it: {p.get('experience_years', 1)} year(s) of professional experience in the roles they want
+({', '.join(p.get('roles', []))}).
 {p.get('experience_note', '')}
 </candidate>
 
@@ -102,9 +103,9 @@ Return ONLY a JSON object:
   "company_type": "tech" | "non-tech with in-house dev team" | "agency/consultancy" | "unknown"
 }}
 
-Judge "years" against the experience they count above, not the CV's dates: a role asking for 3+ years of
-backend is a real gap. If the company is a startup, weigh ownership and breadth (things they built or ran end to end) as
-strengths; startups often care less about years and titles."""
+Judge "years" against the experience they count above, not the CV's dates: a role asking for clearly more
+is a real gap. If the company is a startup, weigh ownership and breadth (things they built or ran end to end)
+as strengths; startups often care less about years and titles."""
 
 
 def assess_job(conn: sqlite3.Connection, job_id: int) -> dict:
@@ -126,10 +127,10 @@ Company: {name}
 Open engineering roles we know of: {roles}
 
 Find:
-1. What the company does, industry, size, where the tech team sits (Lisbon/Portugal presence? remote policy?).
+1. What the company does, industry, size, where the tech team sits (presence in {where}? remote policy?).
 2. Evidence of a real in-house dev team: engineering blog, GitHub org, tech talks, number of eng roles, stack.
 3. Up to 6 people worth contacting, by public role: CTO / VP or Head of Engineering / Engineering managers
-   (ideally backend/platform, ideally in Portugal) / technical recruiters or talent acquisition for tech.
+   (ideally for {roles_wanted}, ideally in {where}) / technical recruiters or talent acquisition for tech.
    Name, role, why them, and the public URL where you found them (LinkedIn, company site, talk, article).
 4. One or two specific, recent things (product launch, migration, blog post, expansion) the candidate could
    mention to show genuine interest.
@@ -142,7 +143,7 @@ Return ONLY a JSON object:
   "is_startup": true | false,
   "stage": "e.g. Seed, Series A (2025, €12M), bootstrapped, public, or empty",
   "headcount": "approximate, with source, or empty",
-  "portugal_presence": "what you found, or empty",
+  "local_presence": "what you found about them in {where}, or empty",
   "remote_policy": "...",
   "dev_team_evidence": [{{"what": "...", "url": "..."}}],
   "stack": ["..."],
@@ -161,8 +162,10 @@ def research_company(conn: sqlite3.Connection, company_id: int) -> dict:
     roles = [r[0] for r in conn.execute(
         "SELECT DISTINCT title FROM jobs WHERE company_key = ? ORDER BY score DESC LIMIT 8", (c["key"],))]
     hint = f"Note: {c['note']}" if c["note"] else ""
+    p = load_profile()
     prompt = RESEARCH.format(name=c["name"], hint=hint, roles=", ".join(roles) or "none known",
-                             cv=cv_text()[:4000])
+                             cv=cv_text()[:4000], where=p["country"] or p["home_city"],
+                             roles_wanted=", ".join(p["roles"]))
     result = parse_json(run_claude(prompt, web=True))
     kind = {"tech": "tech", "non-tech with in-house dev team": "non-tech",
             "agency/consultancy": "agency"}.get(result.get("company_type", ""))
@@ -238,9 +241,8 @@ Open engineering roles: {roles}
 
 <person>{person}</person>
 
-If it is a startup or small team, lead with ownership and range: they built and shipped a whole platform
-end to end, from the CV and story.
-Founders and early CTOs care about "can this person own things end to end", not titles.
+If it is a startup or small team, lead with ownership and range: the things in the CV and story they built,
+shipped or ran end to end. Founders and early CTOs care about "can this person own things end to end", not titles.
 
 Return ONLY a JSON object:
 {{

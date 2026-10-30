@@ -33,7 +33,7 @@
       {{ task_state('research:' ~ co.id) }}
       {% if research %}
         <p>{{ research.summary }}</p>
-        <p class="meta">{{ research.industry }}{% if research.stage %} · {{ research.stage }}{% endif %}{% if research.headcount %} · {{ research.headcount }}{% endif %}{% if research.portugal_presence %} · Portugal: {{ research.portugal_presence }}{% endif %}{% if research.remote_policy %} · Remote: {{ research.remote_policy }}{% endif %}</p>
+        <p class="meta">{{ research.industry }}{% if research.stage %} · {{ research.stage }}{% endif %}{% if research.headcount %} · {{ research.headcount }}{% endif %}{% if (research.local_presence or research.portugal_presence) %} · {{ home_country or 'Local' }}: {{ (research.local_presence or research.portugal_presence) }}{% endif %}{% if research.remote_policy %} · Remote: {{ research.remote_policy }}{% endif %}</p>
         {% if research.dev_team_evidence %}<div class="label">Dev team evidence</div>
         <ul class="tight">{% for e in research.dev_team_evidence %}<li>{{ e.what }}{% if e.url %} · <a href="{{ e.url }}" target="_blank" rel="noopener">source</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
         {% if research.stack %}<div class="label">Stack</div><p>{{ research.stack|join(', ') }}</p>{% endif %}

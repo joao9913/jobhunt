@@ -121,6 +121,7 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
     <a href="/jobs" class="{{ 'on' if request.path.startswith('/jobs') }}">Jobs</a>
     <a href="/applications" class="{{ 'on' if request.path.startswith('/applications') }}">Applications</a>
     <a href="/companies" class="{{ 'on' if request.path.startswith('/companies') }}">Companies</a>
+    <a href="/profile" class="{{ 'on' if request.path.startswith('/profile') }}">Profile</a>
   </nav>
   <div class="right">
     {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="See what the fetch is doing">{{ 'Cancelling, finishing the current request' if fetch_cancelling else 'Fetching: ' ~ fetch_step }} →</a>
@@ -133,7 +134,12 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
     </form>
   </div>
 </header>
-<main>{% block body %}{% endblock %}</main>
+<main>
+{% if not has_profile and request.path != '/profile' %}
+<div class="panel check-note"><b>Set up your profile first.</b> Postings are ranked against it.
+  <a href="/profile">Upload your CV or fill it in →</a></div>
+{% endif %}
+{% block body %}{% endblock %}</main>
 <script>
 // While a fetch runs, keep the header's step up to date without reloading the page.
 const fetchStatus = document.getElementById("fetch-status");

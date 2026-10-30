@@ -1,13 +1,14 @@
 [project]
 name = "jobhunt"
 version = "0.1.0"
-description = "Private job-search pipeline: collect, score, research, draft outreach."
+description = "Local job-search tool: collect postings, rank them against your CV, research companies, draft outreach."
 requires-python = ">=3.12"
 dependencies = [
     "httpx>=0.27",
     "beautifulsoup4>=4.12",
     "pyyaml>=6.0",
     "flask>=3.0",
+    "pypdf>=6.21.4",
 ]
 
 [project.scripts]

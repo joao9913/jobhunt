@@ -18,9 +18,9 @@
   </select>
   {{ level_select(level, per_level) }}
   <select name="rcheck" class="autosubmit">
-    <option value="" {{ 'selected' if not rcheck }}>from Lisbon: confirmed + to check</option>
-    <option value="0" {{ 'selected' if rcheck == '0' }}>from Lisbon: confirmed only</option>
-    <option value="1" {{ 'selected' if rcheck == '1' }}>from Lisbon: to check only</option>
+    <option value="" {{ 'selected' if not rcheck }}>from {{ home_city }}: confirmed + to check</option>
+    <option value="0" {{ 'selected' if rcheck == '0' }}>from {{ home_city }}: confirmed only</option>
+    <option value="1" {{ 'selected' if rcheck == '1' }}>from {{ home_city }}: to check only</option>
   </select>
   <select name="startup" class="autosubmit">
     <option value="" {{ 'selected' if not startup }}>all companies</option>
@@ -54,7 +54,7 @@
         {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}
         {% if co and co.startup %} <span class="pill startup">startup{% if co.stage %} · {{ co.stage }}{% endif %}</span>{% endif %}
         {% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why }}">{{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }}</span>{% endif %}
-        {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
+        {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from {{ home_country or 'your country' }}: ask the recruiter before applying">check remote</span>{% endif %}
         {% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
       </div>
     </td>

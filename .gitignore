@@ -4,3 +4,5 @@ __pycache__/
 *.pyc
 .ruff_cache/
 .DS_Store
+# Your profile (name, email, CV path, story) stays on your machine.
+profile.yaml

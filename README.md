@@ -1,69 +1,94 @@
 # jobhunt
 
-Private job-search pipeline: collect postings, rank them against your CV, find companies with real dev
-teams, research the people who run those teams, and draft messages **you** send.
+A local job-search tool. It collects postings from LinkedIn, company careers boards and job boards, ranks
+them against your profile and CV, finds companies with real in-house dev teams, researches the people who run
+them, and drafts messages that **you** send.
 
-Nothing is ever sent automatically, and nothing logs into LinkedIn.
+Everything runs on your computer. Nothing is sent automatically, nothing logs into LinkedIn, and your
+profile, CV and job data never leave your machine (they're in `profile.yaml` and `data/`, which git ignores).
+
+## Setup
+
+You need:
+
+- [uv](https://docs.astral.sh/uv/) (`brew install uv`, or see their site)
+- [Claude Code](https://claude.com/claude-code), logged in (`claude` in a terminal once). Assessments, CV
+  reading, research and drafts run `claude -p` on your own Claude subscription; there's no API key.
+
+Then:
+
+```sh
+git clone <this repo> jobhunt && cd jobhunt
+uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
+```
+
+1. Open **Profile**, upload your CV (PDF, Word, HTML, Markdown or text). Claude fills in the form in about a
+   minute: job types, years of experience, skills, searches, where you live.
+2. Check every field, fix what's off, and **Save profile**.
+3. Press the green **Search** button. The first search takes 10–20 minutes; later ones are quicker.
+
+## The profile
+
+| Field | What it does |
+|---|---|
+| Job types | Backend, frontend, full stack, mobile, data, DevOps, ML, QA, embedded, security. Titles of the types you don't tick are hidden. |
+| Searches | What's searched on LinkedIn and the job boards, one per line. |
+| Experience (years) | Count real jobs in the field. Postings asking for more years rank lower; senior titles rank lower when you have under 3. |
+| Skills and points | A posting gets the points for each skill it mentions. |
+| Must mention one of | Postings that mention none of these (e.g. your main language) lose points. |
+| Hide titles with | Tech you don't want, e.g. `java, php`. |
+| Languages you speak | Postings that need another language lose points. |
+| City, country, remote | Postings you can't do from home (on-site elsewhere, remote only for other regions) are hidden. Remote postings that don't say whether they hire from your country are flagged **check remote**. |
+| Story | A few sentences in your own words. Claude's drafts never claim anything that isn't in your story or CV. |
+
+Saving re-ranks every posting. You can also edit `profile.yaml` directly and run `uv run jobhunt score`.
+Advanced settings in `profile.yaml` (all optional): `linkedin.max_detail_fetches`, `linkedin.searches` (to
+set exact searches and locations), `wellfound.pages`, `auto_assess`, `llm_model`, `outreach_rules`, `red_flags`.
 
 ## Daily use
 
-```sh
-cd ~/dev/jobhunt
-uv run jobhunt fetch        # ~5–15 min: all sources, new companies, careers boards, scoring
-uv run jobhunt serve        # dashboard at http://127.0.0.1:5055 (its green Search button runs a fetch; Cancel stops it)
-```
+1. **Today** is your inbox: only postings and companies you haven't seen. Give a posting a status (or press
+   **Seen**) and it never comes back, even when it's reposted or appears on another site.
+2. **Jobs**: every ranked posting, filterable by country, level, remote and status. Open one to read Claude's
+   take (most are assessed during the search), see the salary, **Draft messages**, then **Applied**.
+3. **Applications**: what you've applied to, until it's closed; closed ones go to the Archive tab.
+4. **Companies**: companies posting roles like yours. Open one → **Research with Claude** (dev-team
+   evidence, stack, CTO / engineering managers / tech recruiters with sources) → **Draft** for a person →
+   send it yourself → **Log it** with a follow-up date. Follow-ups show up on Today when due.
 
-In the dashboard:
-
-1. **Today** is your daily inbox: only postings and companies you haven't seen. Give a posting a status
-   (or press **Seen**) and it never comes back, even if it's reposted or appears on another site.
-   **Mark all as seen** clears the day. Follow-ups due and uncontacted targets are here too.
-2. **Jobs**: ranked postings. Open one → **Assess fit** (Claude's honest take) → **Draft messages**
-   (cover note, LinkedIn note for the recruiter, message for the hiring manager) → apply → set status.
-3. **Companies**: every company posting engineering roles. Filter **in-house tech** for in-house tech
-   businesses or **startups** for small teams. Open one → **Research with Claude** (dev-team evidence, stack, CTO / eng managers /
-   tech recruiters with sources, things to mention) → **Draft** for a person → send it yourself on
-   LinkedIn → **Log it** with a follow-up date. Follow-ups show up on Today when due.
-
-Optional: `uv run jobhunt schedule` runs the fetch every morning at 08:00 (macOS launchd).
+`uv run jobhunt schedule` runs the search every morning at 08:00 (macOS only).
 
 ## CLI
 
 | Command | What it does |
 |---|---|
-| `jobhunt fetch [--only linkedin,ats,...]` | Collect, discover, resolve careers boards, score |
-| `jobhunt today [--seen]` | Today's new postings and companies in the terminal (`--seen` clears them) |
+| `jobhunt serve` | The dashboard |
+| `jobhunt fetch [--only linkedin,ats,...]` | Search every source (same as the Search button) |
+| `jobhunt today [--seen]` | Today's new postings and companies in the terminal |
 | `jobhunt score` | Re-rank everything after editing `profile.yaml` |
-| `jobhunt top -n 30` | Best unreviewed postings in the terminal |
+| `jobhunt top -n 30` | Best unreviewed postings |
 | `jobhunt assess [ids] [--top 10]` | Claude triage (apply / maybe / skip) |
-| `jobhunt research "Mercedes-Benz.io"` | Web research on a company |
-| `jobhunt draft --job 123` / `--company Sky --person "Ana Silva, EM"` | Draft messages |
+| `jobhunt research "Company"` | Web research on a company |
+| `jobhunt draft --job 123` / `--company X --person "Name, role"` | Draft messages |
 
-## Where things come from
+Run them as `uv run jobhunt ...`.
+
+## Where postings come from
 
 | Source | Notes |
 |---|---|
-| Company careers boards | Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Personio public APIs. Found automatically for seeded and discovered companies. |
-| LinkedIn | Public logged-out job pages, throttled and capped (`profile.yaml → linkedin`). Stops on 429. Each fetch also re-checks up to `max_closed_checks` postings on your lists and moves the ones that stopped taking applications to **closed by employer**, unless another site still lists the role. |
-| Wellfound | Startup jobs (Lisbon, Portugal, remote) with company size and funding stage. |
-| YC job board | Y Combinator startups; mostly US, the location filter keeps the remote-friendly ones. |
+| Company careers boards | Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Personio public APIs, for the companies in `companies.yaml` and ones discovered from postings. |
+| LinkedIn | Public logged-out job pages, throttled and capped. Each search also re-checks postings on your lists and marks the ones that stopped taking applications as **closed by employer**. |
+| Wellfound, YC jobs | Startup jobs with company size and funding stage. |
 | Landing.jobs | Portugal tech board. |
-| Himalayas, Remotive, RemoteOK | Remote boards; Himalayas filtered to "open to Portugal". |
-| Arbeitnow | EU board (mostly Germany; the location filter drops on-site roles). |
-| HN "Who is hiring" | Monthly thread; keeps Python posts that are remote-EU or Portugal. |
+| Himalayas, Remotive, RemoteOK, Arbeitnow | Remote and EU boards. |
+| HN "Who is hiring" | Monthly thread, filtered to your main tech and location. |
 
-## Tuning
+`companies.yaml` is a starter list of companies to always watch, leaning towards Lisbon / Portugal and
+EU-remote. Add or remove companies for your own search.
 
-- `profile.yaml`: titles to include/exclude, skill weights, red flags (5+ years, other languages),
-  location rules, LinkedIn searches, your story for drafts. Run `jobhunt score` after editing.
-- `companies.yaml`: companies to always watch. Add `ats`/`slug` if you know their careers board.
-- On a company page you can correct its kind (in-house tech / tech / agency) or set it to `ignore`.
+## Your data
 
-## Claude usage
-
-Assess, research and draft run `claude -p` from `data/`, so they use your Claude subscription.
-Every fetch also assesses up to `auto_assess` (default 40) unassessed postings on Today, best first, so most
-postings already have Claude's take when you open them. Assess and draft are small; research uses web search and is the heaviest, so run it on companies you
-actually mean to contact. Everything Claude writes is limited to facts in your CV and `story`.
-
-Data lives in `data/jobhunt.db` (SQLite). Delete it to start over.
+- `profile.yaml`: your profile. `data/cv.txt`: your CV as text. `data/jobhunt.db`: postings, statuses, notes,
+  outreach (SQLite). All ignored by git.
+- Delete `data/jobhunt.db` to start over with postings; your profile stays.

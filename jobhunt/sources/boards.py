@@ -10,7 +10,7 @@ from ..scoring import is_engineering_title
 
 
 def landing_jobs(http: Http, profile: dict) -> Iterator[Job]:
-    """Portugal-focused tech board."""
+    """Portugal-focused tech board (few or no matches for other countries)."""
     offset = 0
     while offset < 3000:
         data = http.json("https://landing.jobs/api/v1/jobs", params={"limit": 50, "offset": offset})
@@ -84,16 +84,17 @@ def arbeitnow(http: Http, profile: dict) -> Iterator[Job]:
 
 
 def himalayas(http: Http, profile: dict) -> Iterator[Job]:
-    """Remote-only board; searched for jobs open to people in Portugal."""
+    """Remote-only board; searched for jobs open to people in your country."""
+    country = profile.get("country") or ""
     for q in profile.get("himalayas_queries", []):
         for page in range(1, 6):
-            data = http.json("https://himalayas.app/jobs/api/search", params={"q": q, "country": "Portugal", "page": page})
+            data = http.json("https://himalayas.app/jobs/api/search", params={"q": q, "country": country, "page": page})
             jobs = (data or {}).get("jobs", [])
             for j in jobs:
                 if not is_engineering_title(j["title"]):
                     continue
                 restr = j.get("locationRestrictions") or []
-                loc = "Remote, Europe" if "Portugal" in restr else ("Remote, worldwide" if not restr else ", ".join(restr[:4]))
+                loc = "Remote, Europe" if country and country in restr else ("Remote, worldwide" if not restr else ", ".join(restr[:4]))
                 salary = ""
                 if j.get("minSalary"):
                     salary = f"{j['minSalary']}–{j.get('maxSalary') or '?'} {j.get('currency', '')}/{j.get('salaryPeriod', 'yr')}"
@@ -108,7 +109,8 @@ def himalayas(http: Http, profile: dict) -> Iterator[Job]:
 
 
 def hn_whos_hiring(http: Http, profile: dict) -> Iterator[Job]:
-    """Monthly 'Ask HN: Who is hiring?' thread. Keeps only posts that look remote-EU or Portugal + Python."""
+    """Monthly 'Ask HN: Who is hiring?' thread. Keeps posts that mention your main tech or job type and look
+    remote-EU or in your country."""
     if not profile.get("hn_whos_hiring"):
         return
     hits = (http.json(
@@ -118,19 +120,23 @@ def hn_whos_hiring(http: Http, profile: dict) -> Iterator[Job]:
     story = next((h for h in hits if h.get("title", "").lower().startswith("ask hn: who is hiring")), None)
     if not story:
         return
+    focus = [w.lower() for w in profile.get("focus_words") or []]
+    places = "|".join(re.escape(w) for w in [*profile["location_match"]["home"], *profile["location_match"]["country"]]
+                      if len(w) > 2)
+    where = re.compile(r"remote[^.\n]{0,40}(europe|eu\b|emea|worldwide|anywhere|cet|gmt)" + (f"|{places}" if places else ""))
     item = http.json(f"https://hn.algolia.com/api/v1/items/{story['objectID']}")
     for c in (item or {}).get("children", []):
         text = html_to_text(c.get("text") or "")
         low = text.lower()
-        if "python" not in low:
+        if focus and not any(w in low for w in focus):
             continue
-        if not re.search(r"remote[^.\n]{0,40}(europe|eu\b|emea|worldwide|anywhere|cet|gmt)|portugal|lisbon", low):
+        if not where.search(low):
             continue
         first = text.split("\n", 1)[0]
         parts = [p.strip() for p in first.split("|")]
         company = parts[0][:80] if parts else "Unknown"
-        title = next((p for p in parts[1:] if re.search(r"engineer|developer|backend|python", p, re.I)), "Engineer (see post)")
-        location = next((p for p in parts[1:] if re.search(r"remote|europe|lisbon|portugal|onsite|hybrid", p, re.I)), "")
+        title = next((p for p in parts[1:] if re.search(r"engineer|developer|programmer", p, re.I)), "Engineer (see post)")
+        location = next((p for p in parts[1:] if re.search(r"remote|europe|onsite|hybrid", p, re.I) or where.search(p.lower())), "")
         yield Job(
             source="hn", ext_id=str(c["id"]), company=company, title=title[:120],
             url=f"https://news.ycombinator.com/item?id={c['id']}", location=location[:120],
