@@ -16,9 +16,11 @@
     </p>
   </div>
   <div class="row">{{ score(j.score) }} {{ job_status(j) }}
+    {% if j.status in ['new', 'interested'] %}
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="applied">
+      <button title="You applied: move it to Applications">Applied</button></form>
+    {% endif %}
     {% if j.status == 'new' %}
-    <form class="inline" method="post" action="/jobs/{{ j.id }}/seen">
-      <button title="Leave it out of Today without giving it a status" {{ 'disabled' if j.seen }}>{{ 'Seen ✓' if j.seen else 'Seen' }}</button></form>
     <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored">
       <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
     {% endif %}
