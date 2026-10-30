@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import subprocess
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import db, inbox, llm
@@ -134,30 +137,98 @@ def close_dead_linkedin(conn: sqlite3.Connection, http: Http, profile: dict) -> 
 def assess_new(conn: sqlite3.Connection, profile: dict) -> int:
     """Have Claude assess the postings waiting on Today, best first, up to `auto_assess` per fetch."""
     limit = profile.get("auto_assess", 40)
-    ids = [r["id"] for r in inbox.new_jobs(conn, 10_000) if not r["assessment"]][:limit]
+    todo = [r for r in inbox.new_jobs(conn, 10_000) if not r["assessment"]][:limit]
+    names = {r["id"]: f"{r['title']} · {r['company']}" for r in todo}
+    done = iter(range(1, len(todo) + 1))
+    count_lock = threading.Lock()
+    log.info("  %d postings to assess", len(todo))
 
     def one(job_id: int) -> bool:
         c = db.connect()  # one connection per thread
         try:
-            llm.assess_job(c, job_id)
+            a = llm.assess_job(c, job_id)
+            with count_lock:
+                n = next(done)
+            log.info("  [%d/%d] %s: %s %s/10, %s", n, len(todo), names[job_id], a.get("verdict"), a.get("fit"),
+                     a.get("summary", ""))
             return True
         except (llm.ClaudeError, OSError, subprocess.TimeoutExpired) as e:
-            log.warning("  assess #%d failed: %s", job_id, e)
+            log.warning("  %s: assessment failed (%s), will retry next fetch", names[job_id], e)
             return False
         finally:
             c.close()
 
     with ThreadPoolExecutor(3) as pool:
-        return sum(pool.map(one, ids))
+        return sum(pool.map(one, [r["id"] for r in todo]))
+
+
+class RunProgress(logging.Handler):
+    """Copies the fetch's log into runs.progress so the dashboard can show it live, also for a fetch
+    started from the terminal. A background thread writes it every couple of seconds, so logging never
+    waits on the database while the fetch itself holds a write lock."""
+
+    def __init__(self, run_id: int) -> None:
+        super().__init__(logging.INFO)
+        self.run_id, self.step, self.lines = run_id, "Starting", []
+        self.state_lock, self.dirty, self.done = threading.Lock(), True, threading.Event()
+        self.conn = sqlite3.connect(db.DB_PATH, timeout=2, check_same_thread=False)
+        self.writer = threading.Thread(target=self._loop, daemon=True)
+        self.writer.start()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        msg = record.getMessage()
+        with self.state_lock:
+            if not msg.startswith(" "):  # top-level lines name the step; indented ones are its details
+                self.step = msg.rstrip(".")
+            self.lines = [*self.lines, {"t": time.strftime("%H:%M:%S"), "msg": msg.strip(),
+                                        "level": record.levelname.lower(), "step": not msg.startswith(" ")}][-500:]
+            self.dirty = True
+
+    def _write(self) -> None:
+        with self.state_lock:
+            if not self.dirty:
+                return
+            data, self.dirty = json.dumps({"step": self.step, "lines": self.lines}), False
+        try:
+            self.conn.execute("UPDATE runs SET progress = ? WHERE id = ?", (data, self.run_id))
+            self.conn.commit()
+        except sqlite3.OperationalError:  # database busy: try again next tick
+            self.dirty = True
+
+    def _loop(self) -> None:
+        while not self.done.wait(2):
+            self._write()
+
+    def close(self) -> None:
+        self.done.set()
+        self.writer.join()
+        self.conn.execute("PRAGMA busy_timeout = 30000")
+        self._write()
+        self.conn.close()
+        super().close()
 
 
 def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
     conn = db.connect()
+    run_id = conn.execute("INSERT INTO runs (started) VALUES (?)", (db.now(),)).lastrowid
+    conn.commit()
+    progress = RunProgress(run_id)
+    log.addHandler(progress)
+    try:
+        return _fetch(conn, run_id, sources, resolve_limit)
+    except Exception as e:
+        log.error("Fetch failed: %s", e)
+        raise
+    finally:
+        log.removeHandler(progress)
+        progress.close()
+        conn.close()
+
+
+def _fetch(conn: sqlite3.Connection, run_id: int, sources: set[str] | None, resolve_limit: int) -> dict:
     http = Http()
     profile = load_profile()
     scorer = Scorer(profile)
-    run_id = conn.execute("INSERT INTO runs (started) VALUES (?)", (db.now(),)).lastrowid
-    conn.commit()
     seed_companies(conn)
     want = lambda name: not sources or name in sources  # noqa: E731
 
@@ -199,6 +270,7 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
                 conn.commit()
                 filled += 1
             log.info("  linkedin     %4d older postings filled in", filled)
+        log.info("Checking LinkedIn postings on your lists still take applications...")
         closed = close_dead_linkedin(conn, http, profile)
         log.info("  linkedin     %4d postings no longer taking applications, closed", closed)
     else:
@@ -209,6 +281,7 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
         if not conn.execute("SELECT 1 FROM companies WHERE key = ?", (company_key(name),)).fetchone():
             db.ensure_company(conn, name)
     conn.commit()
+    log.info("Scoring postings...")
     rescore_all(conn, scorer)
     refresh_company_stats(conn, profile.get("min_score", 40))
 
@@ -225,6 +298,8 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
         conn.commit()
     collected_total = len(collected) + collected_n
 
+    if want("ats"):
+        log.info("Scoring the careers-board postings...")
     rescore_all(conn, scorer)
     refresh_company_stats(conn, profile.get("min_score", 40))
 
@@ -246,6 +321,8 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
         "inbox_jobs": len(inbox_jobs),
         "inbox_companies": len(inbox_companies),
     }
+    log.info("Done: %d postings checked, %d new fitting postings, %d new companies, %d assessed",
+             collected_total, summary["new_fits"], summary["new_companies"], assessed)
     conn.execute("UPDATE runs SET finished = ?, summary = ? WHERE id = ?", (db.now(), json.dumps(summary), run_id))
     conn.commit()
     return summary

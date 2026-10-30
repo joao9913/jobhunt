@@ -105,6 +105,8 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
     seen: set[str] = set()
     try:
         for search in cfg.get("searches", []):
+            log.info("  linkedin: searching \"%s\" in %s%s", search["keywords"], search["location"],
+                     " (remote)" if search.get("remote") else "")
             for start in range(0, 200, 10):
                 params = {"keywords": search["keywords"], "location": search["location"], "f_TPR": window,
                           "start": start}

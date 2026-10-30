@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Fetch · jobhunt{% endblock %}
+{% block body %}
+<div class="panel">
+  <div class="row" style="justify-content:space-between">
+    <div>
+      <div class="label" id="run-state"></div>
+      <div class="stat" id="run-step" style="font-size:20px"></div>
+      <div class="meta" id="run-time"></div>
+    </div>
+    <div id="assess" style="min-width:220px; display:none">
+      <div class="label">Claude assessments</div>
+      <div class="bar"><div id="assess-bar"></div></div>
+      <div class="meta" id="assess-text"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h2>What it's doing</h2>
+  <div id="log" class="runlog"></div>
+  <p class="empty" id="log-empty" style="display:none">No log for this fetch yet. Press <b>Fetch now</b> to watch one live.</p>
+</div>
+
+<script>
+const logEl = document.getElementById("log");
+const ago = (s) => { const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
+
+function render(run) {
+  const state = run.running ? "Running" : run.failed ? "Failed" : run.finished ? "Finished" : "";
+  document.getElementById("run-state").textContent = state;
+  document.getElementById("run-state").className = "label " + (run.running ? "working" : run.failed ? "error" : "");
+  document.getElementById("run-step").textContent = run.started ? run.step : "";
+  const start = run.started ? new Date(run.started.replace(" ", "T")) : null;
+  const end = run.finished ? new Date(run.finished.replace(" ", "T")) : new Date();
+  document.getElementById("run-time").textContent = start
+    ? `Started ${run.started.slice(11, 16)} · ${run.running ? "running for" : "took"} ${ago(Math.round((end - start) / 1000))}` : "";
+  document.getElementById("log-empty").style.display = run.lines.length ? "none" : "";
+
+  // Claude progress comes from the "[n/m]" lines the assess step logs.
+  const counts = run.lines.map((l) => l.msg.match(/^\[(\d+)\/(\d+)\]/)).filter(Boolean);
+  const todo = run.lines.map((l) => l.msg.match(/^(\d+) postings to assess/)).filter(Boolean).pop();
+  const total = counts.length ? +counts.at(-1)[2] : todo ? +todo[1] : 0;
+  document.getElementById("assess").style.display = total ? "" : "none";
+  if (total) {
+    const n = counts.length ? +counts.at(-1)[1] : 0;
+    document.getElementById("assess-bar").style.width = `${(100 * n) / total}%`;
+    document.getElementById("assess-text").textContent = `${n} of ${total} done`;
+  }
+
+  const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;
+  logEl.replaceChildren(...run.lines.map((l, i) => {
+    const row = document.createElement("div");
+    const current = run.running && l.step && !run.lines.slice(i + 1).some((x) => x.step);
+    row.className = `line ${l.step ? "step" : "detail"} ${l.level} ${current ? "current" : ""}`;
+    const t = document.createElement("span"); t.className = "t"; t.textContent = l.t;
+    const m = document.createElement("span"); m.textContent = l.msg;
+    row.append(t, m);
+    return row;
+  }));
+  if (run.running && nearBottom) window.scrollTo(0, document.body.scrollHeight);
+}
+
+let run = {{ run|tojson }};
+render(run);
+if (run.running) {
+  const poll = setInterval(async () => {
+    try {
+      run = await (await fetch("/fetch/status")).json();
+      render(run);
+      if (!run.running) clearInterval(poll);
+    } catch {}
+  }, 2000);
+}
+</script>
+{% endblock %}

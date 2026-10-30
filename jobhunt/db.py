@@ -115,6 +115,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if col not in have:
             conn.execute(f"ALTER TABLE companies ADD COLUMN {col} {decl}")
     conn.execute("UPDATE companies SET first_seen = updated_at WHERE first_seen IS NULL")
+    if "progress" not in {r["name"] for r in conn.execute("PRAGMA table_info(runs)")}:
+        conn.execute("ALTER TABLE runs ADD COLUMN progress TEXT")  # live log of a fetch, see pipeline.RunProgress
     have = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
     for col, decl in [("seen", "INTEGER NOT NULL DEFAULT 0"), ("applied_on", "TEXT"), ("closed_on", "TEXT"),
                       ("checked_on", "TEXT"), ("remote_check", "INTEGER NOT NULL DEFAULT 0")]:  # checked_on: last time we checked it still takes applications

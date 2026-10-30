@@ -9,7 +9,7 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import quote_plus
 
-from flask import Flask, abort, g, redirect, render_template, request, url_for
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
 from . import db, inbox, llm
 from .core import countries, load_profile
@@ -82,7 +82,10 @@ def create_app() -> Flask:
 
     @app.context_processor
     def globals_():
-        return {"tasks": dict(_tasks), "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
+        state = _fetch_state()
+        claude_running = sum(1 for k, v in _tasks.items() if k != "fetch" and v == "running")
+        return {"tasks": dict(_tasks), "fetching": state["running"], "fetch_step": state["step"],
+                "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
                 "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url}
 
@@ -140,7 +143,29 @@ def create_app() -> Flask:
     @app.post("/fetch")
     def fetch_now():
         _run("fetch", _fetch_task)
-        return redirect(request.referrer or url_for("today"))
+        return redirect(url_for("fetch_page"))
+
+    def _fetch_state() -> dict:
+        """The latest fetch: running or not, its current step and log. Also covers terminal/scheduled fetches."""
+        r = conn().execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+        if r is None:
+            return {"running": False, "step": "", "lines": [], "started": None, "finished": None, "failed": False}
+        p = _loads(r["progress"], {})
+        lines = p.get("lines", [])
+        failed = _tasks.get("fetch", "").startswith("error") or any(x["level"] == "error" for x in lines)
+        # An unfinished run older than 3 hours crashed without saying so.
+        stale = conn().execute("SELECT ? < datetime('now', 'localtime', '-3 hour')", (r["started"],)).fetchone()[0]
+        running = not r["finished"] and not failed and (_tasks.get("fetch") == "running" or not stale)
+        return {"running": running, "step": p.get("step", "Starting"), "lines": lines, "started": r["started"],
+                "finished": r["finished"], "failed": failed or (not r["finished"] and not running)}
+
+    @app.get("/fetch")
+    def fetch_page():
+        return render_template("fetch.html", run=_fetch_state())
+
+    @app.get("/fetch/status")
+    def fetch_status():
+        return jsonify(_fetch_state())
 
     # ---------- jobs ----------
 

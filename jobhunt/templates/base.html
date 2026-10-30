@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Jobhunt{% endblock %}</title>
-{% if tasks.values()|select("equalto", "running")|list %}<meta http-equiv="refresh" content="6">{% endif %}
+{% if claude_running %}<meta http-equiv="refresh" content="6">{% endif %}
 <style>
 :root {
   --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1d1f; --muted: #6a6f75; --line: #e3e3df;
@@ -76,6 +76,19 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
 .error { color: var(--bad); font-size: 13px; white-space: pre-wrap; }
 .empty { color: var(--muted); padding: 18px 0; }
 .pager { justify-content: center; margin-top: 12px; }
+.runlog { font-size: 13px; }
+.runlog .line { display: flex; gap: 12px; padding: 2px 0; }
+.runlog .t { font: 12px var(--mono); color: var(--muted); flex: none; }
+.runlog .step { font-weight: 600; margin-top: 10px; }
+.runlog .step:first-child { margin-top: 0; }
+.runlog .detail { padding-left: 74px; color: var(--muted); }
+.runlog .detail .t { display: none; }
+.runlog .warning { color: var(--warn); }
+.runlog .error { color: var(--bad); }
+.runlog .current { color: var(--warn); }
+.runlog .current::after { content: "…"; }
+.bar { height: 8px; border-radius: 99px; background: var(--soft); overflow: hidden; margin: 6px 0 4px; }
+.bar > div { height: 100%; background: var(--accent); transition: width .4s; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 </style>
 </head>
@@ -89,14 +102,28 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
     <a href="/companies" class="{{ 'on' if request.path.startswith('/companies') }}">Companies</a>
   </nav>
   <div class="right">
-    {% if tasks.get('fetch') == 'running' %}<span class="working">Fetching…</span>{% endif %}
-    {% set running = tasks.values()|select("equalto", "running")|list|length %}
+    {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="See what the fetch is doing">Fetching: {{ fetch_step }} →</a>
+    {% else %}<a href="/fetch" class="meta">Last fetch</a>{% endif %}
+    {% set running = claude_running %}
     {% if running %}<span class="working">{{ running }} Claude task{{ 's' if running > 1 }} running</span>{% endif %}
-    <form class="inline" method="post" action="/fetch"><button {{ 'disabled' if tasks.get('fetch') == 'running' }}>Fetch now</button></form>
+    <form class="inline" method="post" action="/fetch"><button {{ 'disabled' if fetching }}>Fetch now</button></form>
   </div>
 </header>
 <main>{% block body %}{% endblock %}</main>
 <script>
+// While a fetch runs, keep the header's step up to date without reloading the page.
+const fetchStatus = document.getElementById("fetch-status");
+if (fetchStatus) {
+  const poll = setInterval(async () => {
+    try {
+      const s = await (await fetch("/fetch/status")).json();
+      if (s.running) { fetchStatus.textContent = `Fetching: ${s.step} →`; return; }
+      clearInterval(poll);
+      fetchStatus.textContent = s.failed ? "Fetch failed: see why →" : "Fetch finished: reload to see new postings";
+      fetchStatus.href = s.failed ? "/fetch" : location.href;
+    } catch {}
+  }, 3000);
+}
 // Changing page keeps the scroll position: remember it on click, restore it once the new page loads.
 document.addEventListener("click", (e) => {
   const a = e.target.closest(".pager a");
