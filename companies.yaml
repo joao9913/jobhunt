@@ -1,0 +1,157 @@
+# Seed list of companies to watch. Companies are also discovered automatically from postings.
+# Only `name` is required. `ats`/`slug` are found by `jobhunt resolve` if left out
+# (ats: greenhouse | lever | ashby | smartrecruiters | workable | recruitee | personio).
+# kind: non-tech = business that isn't software but runs a real dev team.
+
+# --- Non-tech companies with tech hubs in Lisbon / Portugal ---
+- {name: Mercedes-Benz.io, kind: non-tech, note: "Mercedes-Benz digital hub in Lisbon"}
+- {name: Critical TechWorks, kind: non-tech, note: "BMW Group software hub, Lisbon/Porto"}
+- {name: Volkswagen Digital Solutions, kind: non-tech, note: "VW group software, Lisbon"}
+- {name: Daimler Truck, kind: non-tech, note: "Innovation center in Lisbon"}
+- {name: Sky, kind: non-tech, note: "Sky Technology Centre Lisbon"}
+- {name: Ingka Digital, kind: non-tech, note: "IKEA's digital arm, Lisbon hub"}
+- {name: Zalando, kind: non-tech, note: "Tech hub in Lisbon"}
+- {name: Farfetch, kind: non-tech}
+- {name: Jumia, kind: non-tech, note: "Tech center in Lisbon/Porto"}
+- {name: BNP Paribas, kind: non-tech}
+- {name: Natixis, kind: non-tech}
+- {name: Euronext, kind: non-tech}
+- {name: Allianz Technology, kind: non-tech}
+- {name: Vodafone, kind: non-tech}
+- {name: NOS, kind: non-tech}
+- {name: EDP, kind: non-tech}
+- {name: Galp, kind: non-tech}
+- {name: Fidelidade, kind: non-tech}
+- {name: Millennium bcp, kind: non-tech}
+- {name: Sonae, kind: non-tech}
+- {name: Worten, kind: non-tech}
+- {name: Jerónimo Martins, kind: non-tech}
+- {name: Nestlé, kind: non-tech}
+- {name: Siemens, kind: non-tech}
+- {name: Bosch, kind: non-tech, ats: smartrecruiters, slug: boschgroup}
+- {name: Kuehne+Nagel, kind: non-tech}
+- {name: Sixt, kind: non-tech}
+- {name: DAZN, kind: non-tech}
+- {name: Hostelworld, kind: non-tech}
+- {name: Ryanair, kind: non-tech}
+- {name: TAP Air Portugal, kind: non-tech}
+- {name: Teleperformance, kind: non-tech}
+- {name: Decathlon, kind: non-tech}
+- {name: Lidl, kind: non-tech}
+- {name: Schwarz IT, kind: non-tech}
+- {name: Continental, kind: non-tech}
+- {name: Fixando, kind: non-tech, startup: true}
+- {name: Doutor Finanças, kind: non-tech, startup: true}
+- {name: Cofidis, kind: non-tech}
+- {name: Ageas Portugal, kind: non-tech}
+- {name: Generali, kind: non-tech}
+- {name: Zurich Insurance, kind: non-tech}
+- {name: Euronext Technologies, kind: non-tech}
+- {name: Volvo Cars, kind: non-tech}
+- {name: Hilti, kind: non-tech}
+
+# --- Consumer brands / marketplaces with strong in-house tech (remote EU or EU hubs) ---
+- {name: HelloFresh, kind: non-tech, ats: greenhouse, slug: hellofresh}
+- {name: Delivery Hero, kind: non-tech}
+- {name: Glovo, kind: non-tech}
+- {name: Bolt, kind: non-tech}
+- {name: Just Eat Takeaway, kind: non-tech}
+- {name: Picnic, kind: non-tech}
+- {name: About You, kind: non-tech}
+- {name: Westwing, kind: non-tech}
+- {name: Home24, kind: non-tech}
+- {name: Zooplus, kind: non-tech}
+- {name: Vinted, kind: non-tech}
+- {name: Wallapop, kind: non-tech}
+- {name: Cabify, kind: non-tech}
+- {name: Idealista, kind: non-tech}
+- {name: Fever, kind: non-tech}
+- {name: GetYourGuide, kind: non-tech}
+- {name: Babbel, kind: non-tech}
+- {name: Blinkist, kind: non-tech}
+- {name: Flix, kind: non-tech, note: "FlixBus/FlixTrain"}
+- {name: Trade Republic, kind: non-tech}
+- {name: Scalable Capital, kind: non-tech}
+- {name: Raisin, kind: non-tech}
+- {name: Lufthansa Systems, kind: non-tech}
+- {name: TUI, kind: non-tech}
+- {name: Miro, kind: tech}
+- {name: Ottobock, kind: non-tech}
+- {name: Too Good To Go, kind: non-tech, startup: true}
+- {name: Ecosia, kind: non-tech, startup: true}
+- {name: Doctolib, kind: non-tech}
+- {name: BlaBlaCar, kind: non-tech}
+- {name: ManoMano, kind: non-tech}
+- {name: Back Market, kind: non-tech}
+- {name: Veepee, kind: non-tech}
+- {name: Kaufland e-commerce, kind: non-tech}
+- {name: Otto, kind: non-tech}
+- {name: Booksy, kind: non-tech}
+- {name: Sanity Group, kind: non-tech, startup: true}
+- {name: Ocado Technology, kind: non-tech}
+- {name: Gousto, kind: non-tech}
+- {name: Bloom & Wild, kind: non-tech}
+- {name: Moonpig, kind: non-tech}
+- {name: Depop, kind: non-tech}
+- {name: Cazoo, kind: non-tech}
+- {name: Octopus Energy, kind: non-tech}
+- {name: Tibber, kind: non-tech, startup: true}
+- {name: Enpal, kind: non-tech, startup: true}
+- {name: 1KOMMA5, kind: non-tech, startup: true}
+- {name: Sennder, kind: non-tech, startup: true}
+- {name: Forto, kind: non-tech, startup: true}
+- {name: Flink, kind: non-tech, startup: true}
+- {name: Getir, kind: non-tech}
+
+# --- Portuguese tech companies (Python-friendly, hire in Lisbon) ---
+- {name: Sword Health, kind: tech, startup: true}
+- {name: Unbabel, kind: tech, startup: true}
+- {name: Feedzai, kind: tech}
+- {name: Talkdesk, kind: tech}
+- {name: OutSystems, kind: tech}
+- {name: Remote, kind: tech, startup: true}
+- {name: Revolut, kind: tech}
+- {name: Anchorage Digital, kind: tech}
+- {name: Kitch, kind: tech, startup: true}
+- {name: Lynx, kind: tech, startup: true}
+- {name: Defined.ai, kind: tech, startup: true}
+- {name: Codacy, kind: tech, startup: true}
+- {name: Doist, kind: tech}
+- {name: Automattic, kind: tech}
+- {name: Landing.jobs, kind: tech}
+- {name: Zendesk, kind: tech}
+- {name: Cloudflare, kind: tech}
+- {name: N26, kind: tech}
+- {name: Wise, kind: tech}
+- {name: Klarna, kind: tech}
+- {name: Personio, kind: tech}
+- {name: Celonis, kind: tech}
+- {name: Trading 212, kind: tech}
+- {name: eToro, kind: tech}
+- {name: Kraken, kind: tech}
+- {name: Bitpanda, kind: tech}
+
+# --- Portuguese / Lisbon startups and scale-ups (small teams, where your range is an advantage) ---
+- {name: Coverflex, kind: tech, startup: true}
+- {name: Rauva, kind: tech, startup: true}
+- {name: Kevel, kind: tech, startup: true}
+- {name: YData, kind: tech, startup: true}
+- {name: Probely, kind: tech, startup: true}
+- {name: Infraspeak, kind: tech, startup: true}
+- {name: Smartex, kind: tech, startup: true}
+- {name: Didimo, kind: tech, startup: true}
+- {name: Tonic App, kind: tech, startup: true}
+- {name: ComparaJá, kind: tech, startup: true}
+- {name: Hole19, kind: tech, startup: true}
+- {name: Uniplaces, kind: tech, startup: true}
+- {name: Zaask, kind: tech, startup: true}
+- {name: Indie Campers, kind: non-tech, startup: true, note: "Campervan rentals with an in-house product team, Lisbon"}
+- {name: Barkyn, kind: non-tech, startup: true, note: "Pet-food subscription, Lisbon"}
+- {name: Prozis, kind: non-tech, note: "Nutrition e-commerce brand with in-house tech"}
+- {name: Musiversal, kind: tech, startup: true}
+- {name: Heptasense, kind: tech, startup: true}
+- {name: Sensei, kind: tech, startup: true}
+- {name: Lovys, kind: tech, startup: true}
+- {name: Attio, kind: tech, startup: true}
+- {name: Cleverly, kind: tech, startup: true}
+- {name: Hemera, kind: tech, startup: true}

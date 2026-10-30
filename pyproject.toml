@@ -1,0 +1,21 @@
+[project]
+name = "jobhunt"
+version = "0.1.0"
+description = "Private job-search pipeline: collect, score, research, draft outreach."
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "pyyaml>=6.0",
+    "flask>=3.0",
+]
+
+[project.scripts]
+jobhunt = "jobhunt.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jobhunt"]

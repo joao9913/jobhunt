@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Companies · jobhunt{% endblock %}
+{% from "macros.html" import pager with context %}
+{% block body %}
+<form class="filters" method="get">
+  <select name="kind" class="autosubmit">
+    <option value="">all kinds</option>
+    <option value="startup" {{ 'selected' if kind == 'startup' }}>startups</option>
+    <option value="non-tech" {{ 'selected' if kind == 'non-tech' }}>in-house tech (non-tech business)</option>
+    <option value="tech" {{ 'selected' if kind == 'tech' }}>tech companies</option>
+    <option value="agency" {{ 'selected' if kind == 'agency' }}>agencies / consultancies</option>
+    <option value="unknown" {{ 'selected' if kind == 'unknown' }}>not classified yet</option>
+  </select>
+  <select name="status" class="autosubmit">
+    <option value="">active (not ignored)</option>
+    {% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == status }}>{{ s }}</option>{% endfor %}
+  </select>
+  <input name="q" value="{{ q }}" placeholder="name">
+  <button>Filter</button>
+</form>
+
+<div class="panel" style="padding:4px 10px">
+<table>
+  <tr><th>Company</th><th>Fitting roles</th><th>Eng roles (45d)</th><th>Careers board</th><th>Research</th><th></th></tr>
+  {% for c in pg.items %}
+  <tr>
+    <td class="t"><a href="/companies/{{ c.id }}">{{ c.name }}</a>
+      <div class="meta">{% if c.kind == 'non-tech' %}<span class="pill nontech">in-house tech</span>{% elif c.kind %}<span class="pill">{{ c.kind }}</span>{% endif %}
+        {% if c.startup %}<span class="pill startup">startup{% if c.stage %} · {{ c.stage }}{% endif %}{% if c.size %} · {{ c.size }} people{% endif %}</span>{% endif %}
+        {% if c.blurb %} {{ c.blurb }}{% endif %}
+        {% if c.note %} {{ c.note }}{% endif %}</div></td>
+    <td>{{ c.fit_jobs or '–' }}</td>
+    <td class="meta">{{ c.eng_jobs or '–' }}</td>
+    <td class="meta">{{ c.ats or '–' }}</td>
+    <td class="meta">{{ '✓' if c.research else '' }}</td>
+    <td style="text-align:right">
+      <form class="inline" method="post" action="/companies/{{ c.id }}/status">
+        <select name="status" class="autosubmit">{% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == c.status }}>{{ s }}</option>{% endfor %}</select>
+      </form>
+    </td>
+  </tr>
+  {% else %}<tr><td colspan="6" class="empty">No companies yet. Run a fetch.</td></tr>{% endfor %}
+</table>
+{{ pager(pg) }}
+</div>
+{% endblock %}

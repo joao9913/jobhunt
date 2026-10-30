@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Jobhunt{% endblock %}</title>
+{% if tasks.values()|select("equalto", "running")|list %}<meta http-equiv="refresh" content="6">{% endif %}
+<style>
+:root {
+  --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1d1f; --muted: #6a6f75; --line: #e3e3df;
+  --accent: #0f766e; --accent-ink: #ffffff; --soft: #e7f3f1;
+  --good: #15803d; --warn: #b45309; --bad: #b91c1c;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111315; --panel: #181b1e; --ink: #e8e9ea; --muted: #9aa0a6; --line: #2a2e33;
+          --accent: #2dd4bf; --accent-ink: #062a27; --soft: #12302d;
+          --good: #4ade80; --warn: #fbbf24; --bad: #f87171; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+       font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif; }
+a { color: inherit; }
+a:hover { color: var(--accent); }
+header { display: flex; align-items: center; gap: 22px; padding: 12px 24px; border-bottom: 1px solid var(--line);
+         background: var(--panel); position: sticky; top: 0; z-index: 2; }
+header .brand { font-weight: 700; letter-spacing: -.01em; text-decoration: none; }
+header nav { display: flex; gap: 4px; }
+header nav a { text-decoration: none; padding: 5px 10px; border-radius: 6px; color: var(--muted); }
+header nav a.on { background: var(--soft); color: var(--ink); }
+header .right { margin-left: auto; display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; }
+main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 22px; margin: 0 0 4px; letter-spacing: -.015em; }
+h2 { font-size: 15px; margin: 0 0 10px; }
+.sub { color: var(--muted); margin: 0 0 18px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } main { padding: 16px; } }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); }
+td { padding: 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+td.t a { font-weight: 600; text-decoration: none; }
+.meta { color: var(--muted); font-size: 12px; }
+.score { font: 600 13px var(--mono); display: inline-block; min-width: 34px; text-align: center; padding: 2px 6px; border-radius: 5px; background: var(--soft); }
+.score.hi { background: var(--accent); color: var(--accent-ink); }
+.pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+.pill.apply { color: var(--good); border-color: currentColor; }
+.pill.maybe { color: var(--warn); border-color: currentColor; }
+.pill.skip { color: var(--bad); border-color: currentColor; }
+.pill.nontech { color: var(--accent); border-color: currentColor; }
+.pill.startup { color: #7c3aed; border-color: currentColor; }
+.pill.check { color: var(--warn); border-color: currentColor; }
+.check-note { border-color: var(--warn); }
+@media (prefers-color-scheme: dark) { .pill.startup { color: #c4b5fd; } }
+form.inline { display: inline; }
+button, .btn { font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 7px; border: 1px solid var(--line);
+               background: var(--panel); color: var(--ink); cursor: pointer; text-decoration: none; display: inline-block; }
+button.primary, .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:disabled { opacity: .55; cursor: progress; }
+select, input, textarea { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line);
+                          background: var(--bg); color: var(--ink); }
+textarea { width: 100%; min-height: 70px; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
+.tabs a { text-decoration: none; padding: 4px 10px; border-radius: 6px; color: var(--muted); }
+.tabs a.on { background: var(--panel); color: var(--ink); border: 1px solid var(--line); }
+.desc { white-space: pre-wrap; font-size: 13.5px; max-height: 640px; overflow: auto; }
+.draft { position: relative; white-space: pre-wrap; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+         padding: 12px 14px; margin: 6px 0 14px; font-size: 13.5px; }
+.draft .copy { position: absolute; top: 6px; right: 6px; font-size: 11px; padding: 2px 8px; }
+.label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+ul.tight { margin: 4px 0 12px; padding-left: 18px; }
+.stat { font: 600 26px var(--mono); }
+.working { color: var(--warn); font-size: 13px; }
+.error { color: var(--bad); font-size: 13px; white-space: pre-wrap; }
+.empty { color: var(--muted); padding: 18px 0; }
+.pager { justify-content: center; margin-top: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="/">jobhunt</a>
+  <nav>
+    <a href="/today" class="{{ 'on' if request.path.startswith('/today') }}">Today</a>
+    <a href="/jobs" class="{{ 'on' if request.path.startswith('/jobs') }}">Jobs</a>
+    <a href="/applications" class="{{ 'on' if request.path.startswith('/applications') }}">Applications</a>
+    <a href="/companies" class="{{ 'on' if request.path.startswith('/companies') }}">Companies</a>
+  </nav>
+  <div class="right">
+    {% if tasks.get('fetch') == 'running' %}<span class="working">Fetching…</span>{% endif %}
+    {% set running = tasks.values()|select("equalto", "running")|list|length %}
+    {% if running %}<span class="working">{{ running }} Claude task{{ 's' if running > 1 }} running</span>{% endif %}
+    <form class="inline" method="post" action="/fetch"><button {{ 'disabled' if tasks.get('fetch') == 'running' }}>Fetch now</button></form>
+  </div>
+</header>
+<main>{% block body %}{% endblock %}</main>
+<script>
+// Changing page keeps the scroll position: remember it on click, restore it once the new page loads.
+document.addEventListener("click", (e) => {
+  const a = e.target.closest(".pager a");
+  if (!a) return;
+  try { sessionStorage.setItem("pagerScroll", JSON.stringify({ url: a.href, y: window.scrollY })); } catch {}
+});
+try {
+  const saved = JSON.parse(sessionStorage.getItem("pagerScroll") || "null");
+  sessionStorage.removeItem("pagerScroll");
+  if (saved && saved.url === location.href) window.scrollTo(0, saved.y);
+} catch {}
+document.addEventListener("click", (e) => {
+  const b = e.target.closest(".copy");
+  if (!b) return;
+  navigator.clipboard.writeText(b.parentElement.querySelector(".text").innerText);
+  b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1200);
+});
+document.addEventListener("change", (e) => { if (e.target.matches("select.autosubmit")) e.target.form.submit(); });
+document.addEventListener("submit", (e) => { const b = e.target.querySelector("button[data-busy]"); if (b) { b.disabled = true; b.textContent = b.dataset.busy; } });
+</script>
+</body>
+</html>

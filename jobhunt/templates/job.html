@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "macros.html" import score, draft, task_state, job_status with context %}
+{% block title %}{{ j.title }} · jobhunt{% endblock %}
+{% block body %}
+{% set a = j.assessment|loads %}
+{% set d = j.drafts|loads %}
+<p class="meta"><a href="/jobs">← Jobs</a></p>
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>{{ j.title }}</h1>
+    <p class="sub">
+      {% if company %}<a href="/companies/{{ company.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
+      · {{ j.location }}{% if j.remote %} · remote{% endif %}
+      {% if j.salary %} · {{ j.salary }}{% endif %}
+      · posted {{ (j.posted_at or j.first_seen)[:10] }}
+    </p>
+  </div>
+  <div class="row">{{ score(j.score) }} {{ job_status(j) }}
+    {% if j.status == 'new' %}
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/seen">
+      <button title="Leave it out of Today without giving it a status" {{ 'disabled' if j.seen }}>{{ 'Seen ✓' if j.seen else 'Seen' }}</button></form>
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored">
+      <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
+    {% endif %}
+    {% if j.status in ['new', 'interested'] %}
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="closed">
+      <button title="The employer stopped taking applications">Closed</button></form>
+    {% endif %}
+    <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">Open posting ↗</a></div>
+</div>
+
+{% if j.remote_check %}
+<div class="panel check-note"><b>Check remote before applying.</b> This posting doesn't say whether they hire someone
+  living in Lisbon. Ask the recruiter first, for example: <i>"I'm based in Lisbon (same time zone as the UK, 1 hour
+  from CET) and would be glad to work as a contractor or through an EOR. Is that an option for this role?"</i></div>
+{% endif %}
+
+<div class="cols">
+  <div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Claude's take</h2>
+        <form method="post" action="/jobs/{{ j.id }}/assess"><button data-busy="Assessing…">{{ 'Re-assess' if a else 'Assess fit' }}</button></form></div>
+      {{ task_state('assess:' ~ j.id) }}
+      {% if a %}
+        <p><span class="pill {{ a.verdict }}">{{ a.verdict }} · {{ a.fit }}/10</span> {{ a.summary }}</p>
+        <div class="label">Why you fit</div><ul class="tight">{% for x in a.why or [] %}<li>{{ x }}</li>{% endfor %}</ul>
+        <div class="label">Gaps</div><ul class="tight">{% for x in a.gaps or [] %}<li>{{ x }}</li>{% endfor %}</ul>
+        <div class="label">Lead with</div><p>{{ a.angle }}</p>
+      {% else %}<p class="meta">Not assessed yet. Takes ~20 seconds.</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Messages</h2>
+        <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="Drafting…">{{ 'Redraft' if d else 'Draft messages' }}</button></form></div>
+      {{ task_state('draft:' ~ j.id) }}
+      {% if d %}
+        {{ draft('Subject', d.subject) }}
+        {{ draft('Cover note', d.cover_note) }}
+        {{ draft('LinkedIn note to the recruiter', d.linkedin_note_recruiter) }}
+        {{ draft('Message to the hiring manager', d.message_hiring_manager) }}
+        {% if company %}<p class="meta">Find the people on the <a href="/companies/{{ company.id }}">{{ company.name }} page</a>.</p>{% endif %}
+      {% else %}<p class="meta">Cover note, a LinkedIn note for the recruiter and a message for the hiring manager. You edit and send them.</p>{% endif %}
+    </div>
+
+    <div class="panel"><h2>Description</h2><div class="desc">{{ j.description or 'No description fetched for this posting. Open the posting to read it.' }}</div></div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Score breakdown</h2>
+      <ul class="tight">{% for r in j.reasons|loads([]) %}<li>{{ r }}</li>{% endfor %}</ul>
+      <p class="meta">Source: {{ j.source }}{% for o in others %} · <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.source }}</a>{% endfor %}</p>
+    </div>
+    <div class="panel">
+      <h2>Notes</h2>
+      <form method="post" action="/jobs/{{ j.id }}/notes"><textarea name="notes">{{ j.notes or '' }}</textarea><p><button>Save</button></p></form>
+    </div>
+  </div>
+</div>
+{% endblock %}

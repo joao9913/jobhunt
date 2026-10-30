@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% from "macros.html" import job_status, pager with context %}
+{% block title %}Applications · jobhunt{% endblock %}
+{% block body %}
+<div class="filters">
+  <span class="tabs">
+    <a href="?tab=ongoing" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
+    <a href="?tab=archive" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
+  </span>
+</div>
+
+<div class="panel" style="padding:4px 10px">
+{% if pg.items %}
+<table>
+  <tr><th>Role</th><th>Location</th><th>Applied</th>{% if tab == 'archive' %}<th>Closed</th>{% endif %}<th>Notes</th><th></th></tr>
+  {% for j in pg.items %}
+  <tr>
+    <td class="t">
+      <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
+      <div class="meta">{{ j.company }}</div>
+    </td>
+    <td class="meta" style="max-width:180px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
+    <td class="meta" style="white-space:nowrap">{{ j.applied_on or '—' }}</td>
+    {% if tab == 'archive' %}<td class="meta" style="white-space:nowrap">{{ j.closed_on or '—' }}</td>{% endif %}
+    <td class="meta" style="max-width:280px">{{ (j.notes or '')[:140] }}</td>
+    <td style="text-align:right; white-space:nowrap">{{ job_status(j) }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{{ pager(pg) }}
+{% elif tab == 'archive' %}<p class="empty">Nothing archived yet.</p>
+{% else %}<p class="empty">No ongoing applications. Set a posting to "applied" on its page and it shows up here.</p>{% endif %}
+</div>
+{% endblock %}

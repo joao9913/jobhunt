@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "macros.html" import score, draft, task_state with context %}
+{% block title %}{{ co.name }} · jobhunt{% endblock %}
+{% block body %}
+<p class="meta"><a href="/companies">← Companies</a></p>
+<div class="row" style="justify-content:space-between">
+  <div>
+    <h1>{{ co.name }}</h1>
+    <p class="sub">{{ co.eng_jobs }} engineering roles in the last 45 days · {{ co.fit_jobs }} fit your profile
+      {% if co.ats %} · careers board: {{ co.ats }}/{{ co.ats_slug }}{% endif %}{% if co.note %} · {{ co.note }}{% endif %}</p>
+    {% if co.startup or co.blurb %}<p class="meta">{% if co.startup %}<span class="pill startup">startup{% if co.stage %} · {{ co.stage }}{% endif %}{% if co.size %} · {{ co.size }} people{% endif %}</span> {% endif %}{{ co.blurb or '' }}</p>{% endif %}
+  </div>
+  <div class="row">
+    <form class="inline" method="post" action="/companies/{{ co.id }}/kind">
+      <select name="kind" class="autosubmit">
+        <option value="" {{ 'selected' if not co.kind }}>kind: unknown</option>
+        <option value="non-tech" {{ 'selected' if co.kind == 'non-tech' }}>in-house tech</option>
+        <option value="tech" {{ 'selected' if co.kind == 'tech' }}>tech company</option>
+        <option value="agency" {{ 'selected' if co.kind == 'agency' }}>agency / consultancy</option>
+      </select>
+    </form>
+    <form class="inline" method="post" action="/companies/{{ co.id }}/status">
+      <select name="status" class="autosubmit">{% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == co.status }}>{{ s }}</option>{% endfor %}</select>
+    </form>
+  </div>
+</div>
+
+<div class="cols">
+  <div>
+    <div class="panel">
+      <div class="row" style="justify-content:space-between"><h2>Research</h2>
+        <form method="post" action="/companies/{{ co.id }}/research"><button class="{{ '' if research else 'primary' }}" data-busy="Researching…">{{ 'Research again' if research else 'Research with Claude' }}</button></form></div>
+      {{ task_state('research:' ~ co.id) }}
+      {% if research %}
+        <p>{{ research.summary }}</p>
+        <p class="meta">{{ research.industry }}{% if research.stage %} · {{ research.stage }}{% endif %}{% if research.headcount %} · {{ research.headcount }}{% endif %}{% if research.portugal_presence %} · Portugal: {{ research.portugal_presence }}{% endif %}{% if research.remote_policy %} · Remote: {{ research.remote_policy }}{% endif %}</p>
+        {% if research.dev_team_evidence %}<div class="label">Dev team evidence</div>
+        <ul class="tight">{% for e in research.dev_team_evidence %}<li>{{ e.what }}{% if e.url %} · <a href="{{ e.url }}" target="_blank" rel="noopener">source</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+        {% if research.stack %}<div class="label">Stack</div><p>{{ research.stack|join(', ') }}</p>{% endif %}
+        {% if research.hooks %}<div class="label">Things to mention</div>
+        <ul class="tight">{% for h in research.hooks %}<li>{{ h.what }}{% if h.url %} · <a href="{{ h.url }}" target="_blank" rel="noopener">source</a>{% endif %}</li>{% endfor %}</ul>{% endif %}
+        {% if research.fit_note %}<div class="label">Why you</div><p>{{ research.fit_note }}</p>{% endif %}
+        {% if research.careers_url %}<p><a href="{{ research.careers_url }}" target="_blank" rel="noopener">Careers page ↗</a></p>{% endif %}
+      {% else %}<p class="meta">Claude searches the web for their tech team, stack, the people who lead it and recruit for it, and recent news to mention. Takes 1–3 minutes.</p>{% endif %}
+    </div>
+
+    <div class="panel">
+      <h2>People</h2>
+      {% if research.people %}
+      <table>
+        {% for p in research.people %}
+        <tr>
+          <td class="t">{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
+            <div class="meta">{{ p.role }}{% if p.why %} · {{ p.why }}{% endif %}</div></td>
+          <td style="text-align:right"><form method="post" action="/companies/{{ co.id }}/draft">
+            <input type="hidden" name="person" value="{{ p.name }}, {{ p.role }}"><button data-busy="Drafting…">Draft</button></form></td>
+        </tr>
+        {% endfor %}
+      </table>
+      <p class="meta">Check each person on LinkedIn before writing; research can be out of date.</p>
+      {% endif %}
+      <div class="label" style="margin-top:8px">Find people on LinkedIn (opens while you're logged in)</div>
+      <ul class="tight">
+        {% for label, kw in searches.items() %}
+        <li><a href="https://www.linkedin.com/search/results/people/?keywords={{ kw|q }}" target="_blank" rel="noopener">{{ label }}</a></li>
+        {% endfor %}
+      </ul>
+      <form method="post" action="/companies/{{ co.id }}/draft" class="row">
+        <input name="person" placeholder='Someone else, e.g. "Ana Silva, Engineering Manager"' style="flex:1">
+        <button data-busy="Drafting…">Draft for them</button>
+      </form>
+      {{ task_state('cdraft:' ~ co.id) }}
+    </div>
+
+    {% if drafts %}
+    <div class="panel">
+      <h2>Drafts</h2>
+      {% for person, d in drafts.items() %}
+        <p><b>{{ person }}</b></p>
+        {{ draft('Subject', d.subject) }}
+        {{ draft('LinkedIn connection note', d.linkedin_note) }}
+        {{ draft('Message', d.message) }}
+        {{ draft('Follow-up (a week later)', d.followup) }}
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="panel">
+      <h2>Open roles</h2>
+      <table>
+        {% for j in jobs %}
+        <tr>
+          <td style="width:48px">{% if j.rejected %}<span class="meta">–</span>{% else %}{{ score(j.score) }}{% endif %}</td>
+          <td class="t"><a href="/jobs/{{ j.id }}">{{ j.title }}</a><div class="meta">{{ j.location }}{% if j.rejected %} · filtered: {{ j.rejected }}{% endif %}</div></td>
+          <td class="meta">{{ j.status }}</td>
+        </tr>
+        {% else %}<tr><td class="empty">No engineering roles seen yet.</td></tr>{% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>Log a message you sent</h2>
+      <form method="post" action="/companies/{{ co.id }}/outreach">
+        <p><input name="person" placeholder="Who" style="width:100%" required></p>
+        <p class="row">
+          <select name="channel"><option>LinkedIn</option><option>Email</option><option>Application</option><option>Other</option></select>
+          <label class="meta">sent <input type="date" name="sent_on" value="{{ today }}"></label>
+        </p>
+        <p><label class="meta">follow up on <input type="date" name="followup_on"></label></p>
+        <p><textarea name="message" placeholder="What you sent (optional)"></textarea></p>
+        <button class="primary">Log it</button>
+      </form>
+    </div>
+    {% if log %}
+    <div class="panel">
+      <h2>History</h2>
+      {% for o in log %}
+      <div style="margin-bottom:12px">
+        <b>{{ o.person }}</b> <span class="meta">{{ o.channel }} · {{ o.sent_on }}</span>
+        {% if o.outcome %}<span class="pill">{{ o.outcome }}</span>{% elif o.followup_on %}<span class="meta"> · follow up {{ o.followup_on }}</span>{% endif %}
+        {% if not o.outcome %}
+        <div class="row" style="margin-top:4px">
+          <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="replied"><button>Replied</button></form>
+          <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="no reply"><button>No reply</button></form>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <div class="panel">
+      <h2>Notes</h2>
+      <form method="post" action="/companies/{{ co.id }}/notes"><textarea name="notes">{{ co.notes or '' }}</textarea><p><button>Save</button></p></form>
+    </div>
+  </div>
+</div>
+{% endblock %}

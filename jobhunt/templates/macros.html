@@ -1,0 +1,39 @@
+{% macro score(n) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }}">{{ n }}</span>{% endmacro %}
+
+{% macro draft(label, text) %}
+{% if text %}
+<div class="label">{{ label }}{% if text|length < 320 %} · {{ text|length }} chars{% endif %}</div>
+<div class="draft"><button class="copy" type="button">Copy</button><div class="text">{{ text }}</div></div>
+{% endif %}
+{% endmacro %}
+
+{% macro task_state(key) %}
+{% if tasks.get(key) == 'running' %}<p class="working">Claude is working on this… the page refreshes by itself.</p>
+{% elif tasks.get(key, '').startswith('error') %}<p class="error">{{ tasks[key] }}</p>{% endif %}
+{% endmacro %}
+
+{% macro job_status(j) %}
+<form class="inline" method="post" action="/jobs/{{ j.id }}/status">
+  <select name="status" class="autosubmit">
+    {% for group, statuses in [('Triage', TRIAGE_STATUSES), ('Application', ACTIVE_STATUSES), ('Close as', CLOSED_STATUSES)] %}
+    <optgroup label="{{ group }}">
+      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == j.status }}>{{ STATUS_LABELS.get(s, s) }}</option>{% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+</form>
+{% endmacro %}
+
+{% macro pager(pg) %}
+{% if pg.pages > 1 %}
+<div class="row pager">
+  {% if pg.page > 1 %}<a class="btn" href="{{ page_url(pg, pg.page - 1) }}">← Previous</a>{% endif %}
+  {% for p in range(1, pg.pages + 1) %}
+    {% if p == 1 or p == pg.pages or (p - pg.page)|abs <= 2 %}<a class="btn {{ 'primary' if p == pg.page }}" href="{{ page_url(pg, p) }}">{{ p }}</a>
+    {% elif (p - pg.page)|abs == 3 %}<span class="meta">…</span>{% endif %}
+  {% endfor %}
+  {% if pg.page < pg.pages %}<a class="btn" href="{{ page_url(pg, pg.page + 1) }}">Next →</a>{% endif %}
+  <span class="meta">{{ pg.first + 1 }}–{{ pg.first + pg.items|length }} of {{ pg.total }}</span>
+</div>
+{% endif %}
+{% endmacro %}

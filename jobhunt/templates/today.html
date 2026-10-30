@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% from "macros.html" import score, job_status, pager with context %}
+{% block title %}Today · jobhunt{% endblock %}
+{% block body %}
+<div class="grid">
+  <div class="panel"><div class="label">New postings</div><div class="stat">{{ jobs|length }}</div></div>
+  <div class="panel"><div class="label">New companies</div><div class="stat">{{ companies|length }}</div></div>
+  <div class="panel"><div class="label">Interested / <a href="/applications">ongoing applications</a></div><div class="stat">{{ counts.get('interested', 0) }} / {{ ongoing }}</div></div>
+  <div class="panel"><div class="label">Messages sent this week</div><div class="stat">{{ sent }}</div></div>
+</div>
+
+{% if followups %}
+<div class="panel">
+  <h2>Follow-ups due</h2>
+  <table>
+    {% for o in followups %}
+    <tr>
+      <td class="t"><a href="/companies/{{ o.company_id }}">{{ o.company }}</a><div class="meta">{{ o.person }} · {{ o.channel }} · sent {{ o.sent_on }}</div></td>
+      <td class="meta">due {{ o.followup_on }}</td>
+      <td style="text-align:right">
+        <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="replied"><button>Replied</button></form>
+        <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="no reply"><button>Give up</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="panel" id="postings">
+  <div class="row" style="justify-content:space-between">
+    <h2>New postings</h2>
+    {% if jobs %}
+    <form method="post" action="/inbox/seen">
+      {% for j in jobs %}<input type="hidden" name="job" value="{{ j.id }}">{% endfor %}
+      <button>Mark all {{ jobs|length }} as seen</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if jobs %}
+  <table>
+    {% for j in pg.items %}
+    {% set co = kinds.get(j.company_key) %}
+    <tr>
+      <td style="width:48px">{{ score(j.score) }}</td>
+      <td class="t"><a href="/jobs/{{ j.id }}">{{ j.title }}</a>
+        <div class="meta">{% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
+          · {{ j.location }}
+          {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
+          {% if co and co.startup %} <span class="pill startup">startup</span>{% endif %}
+          {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}</div></td>
+      <td class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %}<br>{{ (j.posted_at or j.first_seen)[:10] }}</td>
+      <td style="text-align:right; white-space:nowrap">
+        {{ job_status(j) }}
+        <form class="inline" method="post" action="/inbox/seen"><input type="hidden" name="job" value="{{ j.id }}"><button title="Hide without a status">Seen</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {{ pager(pg) }}
+  {% else %}<p class="empty">You're up to date. New postings appear here after the next fetch.</p>{% endif %}
+</div>
+
+<div class="panel" id="companies">
+  <div class="row" style="justify-content:space-between">
+    <h2>New companies</h2>
+    {% if companies %}
+    <form method="post" action="/inbox/seen">
+      {% for c in companies %}<input type="hidden" name="company" value="{{ c.id }}">{% endfor %}
+      <button>Mark all {{ companies|length }} as seen</button>
+    </form>
+    {% endif %}
+  </div>
+  <p class="meta">Companies with roles that fit you, or startups and in-house tech teams that are hiring engineers. Set <b>target</b> to keep one on your list, or <b>ignore</b> to hide it and its jobs for good.</p>
+  {% if companies %}
+  <table>
+    {% for c in cpg.items %}
+    <tr>
+      <td class="t"><a href="/companies/{{ c.id }}">{{ c.name }}</a>
+        <div class="meta">
+          {% if c.startup %}<span class="pill startup">startup{% if c.stage %} · {{ c.stage }}{% endif %}</span>{% endif %}
+          {% if c.kind == 'non-tech' %}<span class="pill nontech">in-house tech</span>{% elif c.kind %}<span class="pill">{{ c.kind }}</span>{% endif %}
+          {{ c.blurb or c.note or '' }}</div></td>
+      <td class="meta">{{ c.fit_jobs }} fitting · {{ c.eng_jobs }} eng roles</td>
+      <td style="text-align:right; white-space:nowrap">
+        <form class="inline" method="post" action="/companies/{{ c.id }}/status">
+          <select name="status" class="autosubmit">{% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == c.status }}>{{ s }}</option>{% endfor %}</select>
+        </form>
+        <form class="inline" method="post" action="/inbox/seen"><input type="hidden" name="company" value="{{ c.id }}"><button>Seen</button></form>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {{ pager(cpg) }}
+  {% else %}<p class="empty">No new companies since your last review.</p>{% endif %}
+</div>
+
+<div class="panel" id="targets">
+  <h2>Targets not contacted yet</h2>
+  {% if targets %}
+  <table>
+    {% for c in tpg.items %}
+    <tr><td class="t"><a href="/companies/{{ c.id }}">{{ c.name }}</a></td>
+        <td class="meta">{{ c.fit_jobs }} fitting roles · {{ c.eng_jobs }} eng roles</td>
+        <td class="meta">{{ 'researched' if c.research else 'not researched' }}</td></tr>
+    {% endfor %}
+  </table>
+  {{ pager(tpg) }}
+  {% else %}<p class="empty">Set companies to <b>target</b> to keep them here until you contact them.</p>{% endif %}
+</div>
+{% endblock %}

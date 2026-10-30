@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "macros.html" import score, job_status, pager with context %}
+{% block title %}Jobs · jobhunt{% endblock %}
+{% block body %}
+<form class="filters" method="get">
+  <span class="tabs">
+    {% for s in TRIAGE_STATUSES + ['all'] %}
+    <a href="?status={{ s }}&min={{ min_score }}&q={{ q|q }}&remote={{ remote }}&startup={{ startup }}&country={{ country|q }}&rcheck={{ rcheck }}" class="{{ 'on' if s == status }}">{{ STATUS_LABELS.get(s, s) }}</a>
+    {% endfor %}
+    <a href="/applications">applied →</a>
+  </span>
+  <input type="hidden" name="status" value="{{ status }}">
+  <input name="q" value="{{ q }}" placeholder="search title, company, text">
+  <select name="remote" class="autosubmit">
+    <option value="" {{ 'selected' if not remote }}>remote + on-site</option>
+    <option value="1" {{ 'selected' if remote == '1' }}>remote only</option>
+    <option value="0" {{ 'selected' if remote == '0' }}>on-site / hybrid only</option>
+  </select>
+  <select name="rcheck" class="autosubmit">
+    <option value="" {{ 'selected' if not rcheck }}>from Lisbon: confirmed + to check</option>
+    <option value="0" {{ 'selected' if rcheck == '0' }}>from Lisbon: confirmed only</option>
+    <option value="1" {{ 'selected' if rcheck == '1' }}>from Lisbon: to check only</option>
+  </select>
+  <select name="startup" class="autosubmit">
+    <option value="" {{ 'selected' if not startup }}>all companies</option>
+    <option value="1" {{ 'selected' if startup == '1' }}>startups only</option>
+  </select>
+  <select name="country" class="autosubmit">
+    <option value="" {{ 'selected' if not country }}>all countries</option>
+    {% for name, n in per_country %}
+    <option value="{{ name }}" {{ 'selected' if name == country }}>{{ name }} ({{ n }})</option>
+    {% endfor %}
+    {% if country and country not in per_country|map('first') %}<option value="{{ country }}" selected>{{ country }} (0)</option>{% endif %}
+  </select>
+  <label class="meta">min score <input name="min" type="number" value="{{ min_score }}" style="width:64px"></label>
+  <button>Filter</button>
+</form>
+
+<div class="panel" style="padding:4px 10px">
+{% if pg.items %}
+<table>
+  <tr><th></th><th>Role</th><th>Location</th><th>Why</th><th></th></tr>
+  {% for j in pg.items %}
+  {% set a = j.assessment|loads %}
+  {% set co = kinds.get(j.company_key) %}
+  <tr>
+    <td style="width:48px">{{ score(j.score) }}</td>
+    <td class="t">
+      <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
+      <div class="meta">
+        {% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
+        {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}
+        {% if co and co.startup %} <span class="pill startup">startup{% if co.stage %} · {{ co.stage }}{% endif %}</span>{% endif %}
+        {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
+        {% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
+      </div>
+    </td>
+    <td class="meta" style="max-width:200px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
+    <td class="meta" style="max-width:320px">{{ (j.reasons|loads([]))[:3]|join(' · ') }}</td>
+    <td style="text-align:right; white-space:nowrap">
+      <span class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %} · {{ (j.posted_at or j.first_seen)[:10] }}</span><br>
+      {{ job_status(j) }}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{{ pager(pg) }}
+{% else %}<p class="empty">No postings match. Try a lower min score or another tab.</p>{% endif %}
+</div>
+{% endblock %}
