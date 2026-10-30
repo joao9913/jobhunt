@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Jobhunt{% endblock %}</title>
 {% if claude_running %}<meta http-equiv="refresh" content="6">{% endif %}
+<script>
+// List pages remember their last filters and page in this browser. Opening one without any (the menu,
+// "← Jobs", after a status change elsewhere) brings them back; "clear filters" links to "?all".
+// Runs in <head> so the unfiltered page never shows.
+(() => {
+  const path = location.pathname;
+  if (!["/today", "/jobs", "/applications", "/companies"].includes(path)) return;
+  try {
+    const key = "filters:" + path;
+    if (location.search) return localStorage.setItem(key, location.search);
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      sessionStorage.setItem("restoreScroll", "1");
+      location.replace(path + saved);
+    }
+  } catch {}
+})();
+</script>
 <style>
 :root {
   --bg: #f6f6f4; --panel: #ffffff; --ink: #1b1d1f; --muted: #6a6f75; --line: #e3e3df;
@@ -137,6 +155,16 @@ if (fetchStatus) {
     } catch {}
   }, 3000);
 }
+// Coming back to a list (see the <head> script) also returns to where you were scrolled.
+const scrollKey = "scroll:" + location.pathname + location.search;
+addEventListener("pagehide", () => { try { localStorage.setItem(scrollKey, String(window.scrollY)); } catch {} });
+try {
+  if (sessionStorage.getItem("restoreScroll")) {
+    sessionStorage.removeItem("restoreScroll");
+    const y = Number(localStorage.getItem(scrollKey));
+    if (y) window.scrollTo(0, y);
+  }
+} catch {}
 // Changing page keeps the scroll position: remember it on click, restore it once the new page loads.
 document.addEventListener("click", (e) => {
   const a = e.target.closest(".pager a");
