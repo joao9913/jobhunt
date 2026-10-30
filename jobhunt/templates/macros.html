@@ -1,4 +1,4 @@
-{% macro score(n) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }}">{{ n }}</span>{% endmacro %}
+{% macro score(n, big=False) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }} {{ 'big' if big }}" title="Fit score out of 100">{{ n }}</span>{% endmacro %}
 
 {# A drafted message you can edit; goes inside a form.edit-draft with a .save button (see base.html). #}
 {% macro draft_field(label, name, text, rows=8) %}

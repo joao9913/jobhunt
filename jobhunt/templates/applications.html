@@ -9,7 +9,7 @@
   </span>
 </div>
 
-<div class="panel" style="padding:4px 10px">
+<div class="panel flush">
 {% if pg.items %}
 <table>
   <tr><th>Role</th><th>Location</th><th>Applied</th>{% if tab == 'archive' %}<th>Closed</th>{% endif %}<th>Notes</th><th></th></tr>
@@ -23,7 +23,7 @@
     <td class="meta" style="white-space:nowrap">{{ j.applied_on or '—' }}</td>
     {% if tab == 'archive' %}<td class="meta" style="white-space:nowrap">{{ j.closed_on or '—' }}</td>{% endif %}
     <td class="meta" style="max-width:280px">{{ (j.notes or '')[:140] }}</td>
-    <td style="text-align:right; white-space:nowrap">{{ job_status(j) }}</td>
+    <td class="end">{{ job_status(j) }}</td>
   </tr>
   {% endfor %}
 </table>

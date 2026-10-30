@@ -38,7 +38,7 @@
   <a href="?all" class="meta">clear filters</a>
 </form>
 
-<div class="panel" style="padding:4px 10px">
+<div class="panel flush">
 {% if pg.items %}
 <table>
   <tr><th></th><th>Role</th><th>Location</th><th>Why</th><th></th></tr>
@@ -46,7 +46,7 @@
   {% set a = j.assessment|loads %}
   {% set co = kinds.get(j.company_key) %}
   <tr>
-    <td style="width:48px">{{ score(j.score) }}</td>
+    <td class="s">{{ score(j.score) }}</td>
     <td class="t">
       <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
       <div class="meta">
@@ -60,7 +60,7 @@
     </td>
     <td class="meta" style="max-width:200px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
     <td class="meta" style="max-width:320px">{{ (j.reasons|loads([]))[:3]|join(' · ') }}</td>
-    <td style="text-align:right; white-space:nowrap">
+    <td class="end">
       <span class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %} · {{ (j.posted_at or j.first_seen)[:10] }}</span><br>
       {{ job_status(j) }}
     </td>

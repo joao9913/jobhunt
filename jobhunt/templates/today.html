@@ -2,12 +2,13 @@
 {% from "macros.html" import score, job_status, pager, level_select with context %}
 {% block title %}Today · jobhunt{% endblock %}
 {% block body %}
-<div class="grid">
-  <div class="panel"><div class="label">New postings</div><div class="stat">{{ jobs|length }}</div></div>
-  <div class="panel"><div class="label">New companies</div><div class="stat">{{ companies|length }}</div></div>
-  <div class="panel"><div class="label"><a href="/jobs?status=interested">Interested</a></div><div class="stat">{{ counts.get('interested', 0) }}</div></div>
-  <div class="panel"><div class="label"><a href="/applications">Ongoing applications</a></div><div class="stat">{{ ongoing }}</div></div>
-  <div class="panel"><div class="label">Messages sent this week</div><div class="stat">{{ sent }}</div></div>
+{% set i = counts.get('interested', 0) %}
+<div class="ledger">
+  <a class="tally hero {{ 'zero' if not jobs }}" href="#postings"><span class="label">New postings</span><span class="n">{{ jobs|length }}</span></a>
+  <a class="tally {{ 'zero' if not companies }}" href="#companies"><span class="label">New companies</span><span class="n">{{ companies|length }}</span></a>
+  <a class="tally {{ 'zero' if not i }}" href="/jobs?status=interested"><span class="label">Interested</span><span class="n">{{ i }}</span></a>
+  <a class="tally {{ 'zero' if not ongoing }}" href="/applications"><span class="label">Ongoing applications</span><span class="n">{{ ongoing }}</span></a>
+  <div class="tally {{ 'zero' if not sent }}"><span class="label">Messages sent this week</span><span class="n">{{ sent }}</span></div>
 </div>
 
 {% if followups %}
@@ -18,7 +19,7 @@
     <tr>
       <td class="t"><a href="/companies/{{ o.company_id }}">{{ o.company }}</a><div class="meta">{{ o.person }} · {{ o.channel }} · sent {{ o.sent_on }}</div></td>
       <td class="meta">due {{ o.followup_on }}</td>
-      <td style="text-align:right">
+      <td class="end">
         <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="replied"><button>Replied</button></form>
         <form class="inline" method="post" action="/outreach/{{ o.id }}"><input type="hidden" name="outcome" value="no reply"><button>Give up</button></form>
       </td>
@@ -29,7 +30,7 @@
 {% endif %}
 
 <div class="panel" id="postings">
-  <div class="row" style="justify-content:space-between">
+  <div class="row spread">
     <h2>New postings</h2>
     <div class="row">
       <form method="get" class="inline">
@@ -50,7 +51,7 @@
     {% for j in pg.items %}
     {% set co = kinds.get(j.company_key) %}
     <tr>
-      <td style="width:48px">{{ score(j.score) }}</td>
+      <td class="s">{{ score(j.score) }}</td>
       <td class="t"><a href="/jobs/{{ j.id }}">{{ j.title }}</a>
         <div class="meta">{% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
           · {{ j.location }}
@@ -60,7 +61,7 @@
           {% if co and co.startup %} <span class="pill startup">startup</span>{% endif %}
           {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}</div></td>
       <td class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %}<br>{{ (j.posted_at or j.first_seen)[:10] }}</td>
-      <td style="text-align:right; white-space:nowrap">
+      <td class="end">
         {{ job_status(j) }}
         <form class="inline" method="post" action="/inbox/seen"><input type="hidden" name="job" value="{{ j.id }}"><button title="Hide without a status">Seen</button></form>
       </td>
@@ -73,7 +74,7 @@
 </div>
 
 <div class="panel" id="companies">
-  <div class="row" style="justify-content:space-between">
+  <div class="row spread">
     <h2>New companies</h2>
     {% if companies %}
     <form method="post" action="/inbox/seen">
@@ -93,7 +94,7 @@
           {% if c.kind == 'non-tech' %}<span class="pill nontech">in-house tech</span>{% elif c.kind %}<span class="pill">{{ c.kind }}</span>{% endif %}
           {{ c.blurb or c.note or '' }}</div></td>
       <td class="meta">{{ c.fit_jobs }} fitting · {{ c.eng_jobs }} eng roles</td>
-      <td style="text-align:right; white-space:nowrap">
+      <td class="end">
         <form class="inline" method="post" action="/companies/{{ c.id }}/status">
           <select name="status" class="autosubmit">{% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == c.status }}>{{ s }}</option>{% endfor %}</select>
         </form>

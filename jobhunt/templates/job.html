@@ -4,8 +4,9 @@
 {% block body %}
 {% set a = j.assessment|loads %}
 {% set d = j.drafts|loads %}
-<p class="meta"><a href="/jobs" id="back">← Jobs</a></p>
-<div class="row" style="justify-content:space-between">
+<p class="back"><a href="/jobs" id="back">← Jobs</a></p>
+<div class="job-head">
+  {{ score(j.score, big=True) }}
   <div>
     <h1>{{ j.title }}</h1>
     <p class="sub">
@@ -14,8 +15,7 @@
       {% if j.seniority %} · {{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }} ({{ j.seniority_why }}){% endif %}
       · posted {{ (j.posted_at or j.first_seen)[:10] }}
     </p>
-  </div>
-  <div class="row">{{ score(j.score) }} {{ job_status(j, "/jobs") }}
+    <div class="row">{{ job_status(j, "/jobs") }}
     {% if j.status in ['new', 'interested'] %}
     <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="applied"><input type="hidden" name="next" value="/jobs">
       <button title="You applied: move it to Applications">Applied</button></form>
@@ -25,6 +25,7 @@
       <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
     {% endif %}
     <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">Open posting ↗</a></div>
+  </div>
 </div>
 
 {% if j.remote_check %}
@@ -36,7 +37,7 @@
 <div class="cols">
   <div>
     <div class="panel">
-      <div class="row" style="justify-content:space-between"><h2>Claude's take</h2>
+      <div class="row spread"><h2>Claude's take</h2>
         <form method="post" action="/jobs/{{ j.id }}/assess"><button data-busy="Assessing…">{{ 'Re-assess' if a else 'Assess fit' }}</button></form></div>
       {{ task_state('assess:' ~ j.id) }}
       {% if a %}
@@ -48,7 +49,7 @@
     </div>
 
     <div class="panel" id="messages">
-      <div class="row" style="justify-content:space-between"><h2>Messages</h2>
+      <div class="row spread"><h2>Messages</h2>
         <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="Drafting…">{{ 'Redraft all' if d else 'Draft all' }}</button></form></div>
       {{ task_state('draft:' ~ j.id) }}
       <p class="meta">Draft only what you need. You edit and send them yourself.</p>
@@ -56,7 +57,7 @@
                                    ('recruiter', 'LinkedIn note to the recruiter', ['linkedin_note_recruiter']),
                                    ('manager', 'Message to the hiring manager', ['message_hiring_manager'])] %}
       {% set have = d and d.get(keys[-1]) %}
-      <div class="row" style="justify-content:space-between; margin-top:12px">
+      <div class="row spread msg-head">
         <b>{{ label }}</b>
         <form method="post" action="/jobs/{{ j.id }}/draft"><input type="hidden" name="kind" value="{{ kind }}">
           <button data-busy="Drafting…" {{ 'disabled' if tasks.get('draft:' ~ j.id ~ ':' ~ kind) == 'running' }}>{{ 'Redraft' if have else 'Draft' }}</button></form>
@@ -78,7 +79,7 @@
   <div>
     <div class="panel">
       <div class="label">Salary</div>
-      <div class="stat" style="font-size:20px">{{ pay or '—' }}</div>
+      <div class="stat" style="font-size:22px; margin:2px 0 4px">{{ pay or '—' }}</div>
       <div class="meta">{{ 'Read from the description: check it there' if pay_from_desc
                          else 'From the job board' if pay else 'Not stated in the posting' }}</div>
     </div>

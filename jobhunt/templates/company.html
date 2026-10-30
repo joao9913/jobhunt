@@ -2,8 +2,8 @@
 {% from "macros.html" import score, draft_field, task_state with context %}
 {% block title %}{{ co.name }} · jobhunt{% endblock %}
 {% block body %}
-<p class="meta"><a href="/companies">← Companies</a></p>
-<div class="row" style="justify-content:space-between">
+<p class="back"><a href="/companies">← Companies</a></p>
+<div class="row spread">
   <div>
     <h1>{{ co.name }}</h1>
     <p class="sub">{{ co.eng_jobs }} engineering roles in the last 45 days · {{ co.fit_jobs }} fit your profile
@@ -28,7 +28,7 @@
 <div class="cols">
   <div>
     <div class="panel">
-      <div class="row" style="justify-content:space-between"><h2>Research</h2>
+      <div class="row spread"><h2>Research</h2>
         <form method="post" action="/companies/{{ co.id }}/research"><button class="{{ '' if research else 'primary' }}" data-busy="Researching…">{{ 'Research again' if research else 'Research with Claude' }}</button></form></div>
       {{ task_state('research:' ~ co.id) }}
       {% if research %}
@@ -52,7 +52,7 @@
         <tr>
           <td class="t">{% if p.url %}<a href="{{ p.url }}" target="_blank" rel="noopener">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}
             <div class="meta">{{ p.role }}{% if p.why %} · {{ p.why }}{% endif %}</div></td>
-          <td style="text-align:right"><form method="post" action="/companies/{{ co.id }}/draft">
+          <td class="end"><form method="post" action="/companies/{{ co.id }}/draft">
             <input type="hidden" name="person" value="{{ p.name }}, {{ p.role }}"><button data-busy="Drafting…">Draft</button></form></td>
         </tr>
         {% endfor %}
@@ -94,7 +94,7 @@
       <table>
         {% for j in jobs %}
         <tr>
-          <td style="width:48px">{% if j.rejected %}<span class="meta">–</span>{% else %}{{ score(j.score) }}{% endif %}</td>
+          <td class="s">{% if j.rejected %}<span class="meta">–</span>{% else %}{{ score(j.score) }}{% endif %}</td>
           <td class="t"><a href="/jobs/{{ j.id }}">{{ j.title }}</a><div class="meta">{{ j.location }}{% if j.rejected %} · filtered: {{ j.rejected }}{% endif %}</div></td>
           <td class="meta">{{ j.status }}</td>
         </tr>

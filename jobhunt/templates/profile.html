@@ -6,16 +6,17 @@
 .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; }
 .field { display: flex; flex-direction: column; gap: 4px; }
 .field.wide { grid-column: 1 / -1; }
-.field > span { font-size: 12px; font-weight: 600; color: var(--muted); }
+.field > span { font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
 .field input, .field select, .field textarea { width: 100%; }
+.field input[type=checkbox] { width: auto; }
 .field .meta { font-weight: 400; }
 .checks { display: flex; flex-wrap: wrap; gap: 6px 14px; }
-.checks label { display: flex; gap: 6px; align-items: center; }
-.suggested { border-color: var(--accent); background: var(--soft); }
+.checks label { display: flex; gap: 6px; align-items: center; min-height: 28px; }
+.suggested { border-left: 3px solid var(--pen); background: color-mix(in srgb, var(--pen) 6%, var(--sheet)); }
 </style>
 
 <div class="panel">
-  <div class="row" style="justify-content:space-between">
+  <div class="row spread">
     <div>
       <h2>Your CV</h2>
       <p class="meta" style="margin:0">
@@ -33,7 +34,7 @@
 </div>
 
 {% if suggested %}
-<div class="panel suggested row" style="justify-content:space-between">
+<div class="panel suggested row spread">
   <div><b>Claude filled the form from your CV.</b> Check every field and fix what's off, then press <b>Save profile</b>.
     Nothing is used until you save.</div>
   <form method="post" action="/profile/discard"><button>Discard suggestions</button></form>

@@ -20,7 +20,7 @@
   <a href="?all" class="meta">clear filters</a>
 </form>
 
-<div class="panel" style="padding:4px 10px">
+<div class="panel flush">
 <table>
   <tr><th>Company</th><th>Fitting roles</th><th>Eng roles (45d)</th><th>Careers board</th><th>Research</th><th></th></tr>
   {% for c in pg.items %}
@@ -34,7 +34,7 @@
     <td class="meta">{{ c.eng_jobs or '–' }}</td>
     <td class="meta">{{ c.ats or '–' }}</td>
     <td class="meta">{{ '✓' if c.research else '' }}</td>
-    <td style="text-align:right">
+    <td class="end">
       <form class="inline" method="post" action="/companies/{{ c.id }}/status">
         <select name="status" class="autosubmit">{% for s in COMPANY_STATUSES %}<option {{ 'selected' if s == c.status }}>{{ s }}</option>{% endfor %}</select>
       </form>
