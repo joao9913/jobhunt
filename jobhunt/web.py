@@ -113,6 +113,13 @@ def create_app() -> Flask:
         if c is not None:
             c.close()
 
+    # Pages change as you triage, so the browser's back button must fetch them again, not show a stale copy.
+    @app.after_request
+    def no_cache(resp):
+        if resp.mimetype == "text/html":
+            resp.headers["Cache-Control"] = "no-store"
+        return resp
+
     @app.get("/")
     def home():
         return redirect(url_for("today"))

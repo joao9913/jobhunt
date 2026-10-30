@@ -155,6 +155,8 @@ if (fetchStatus) {
     } catch {}
   }, 3000);
 }
+// Safari can still restore a page from its back-forward cache despite no-store; reload it so it's current.
+addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
 // Coming back to a list (see the <head> script) also returns to where you were scrolled.
 const scrollKey = "scroll:" + location.pathname + location.search;
 addEventListener("pagehide", () => { try { localStorage.setItem(scrollKey, String(window.scrollY)); } catch {} });
