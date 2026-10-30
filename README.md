@@ -62,7 +62,8 @@ Optional: `uv run jobhunt schedule` runs the fetch every morning at 08:00 (macOS
 ## Claude usage
 
 Assess, research and draft run `claude -p` from `data/`, so they use your Claude subscription.
-Assess and draft are small; research uses web search and is the heaviest, so run it on companies you
+Every fetch also assesses up to `auto_assess` (default 40) unassessed postings on Today, best first, so most
+postings already have Claude's take when you open them. Assess and draft are small; research uses web search and is the heaviest, so run it on companies you
 actually mean to contact. Everything Claude writes is limited to facts in your CV and `story`.
 
 Data lives in `data/jobhunt.db` (SQLite). Delete it to start over.

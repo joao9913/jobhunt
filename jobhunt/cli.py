@@ -18,7 +18,7 @@ def cmd_fetch(args) -> None:
     sources = set(args.only.split(",")) if args.only else None
     summary = fetch(sources, resolve_limit=args.resolve)
     print(f"\nDone: {summary['collected']} postings checked. Today: {summary['new_fits']} new fitting postings, "
-          f"{summary['new_companies']} new companies. Inbox: {summary['inbox_jobs']} postings, "
+          f"{summary['new_companies']} new companies, {summary['assessed']} assessed by Claude. Inbox: {summary['inbox_jobs']} postings, "
           f"{summary['inbox_companies']} companies you haven't seen. Review with `jobhunt today` or `jobhunt serve`.")
 
 
@@ -139,7 +139,8 @@ def main() -> None:
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("fetch", help="collect postings from every source, discover companies, score")
-    p.add_argument("--only", help="comma list: ats,resolve,linkedin,landingjobs,remotive,remoteok,arbeitnow,himalayas,hn")
+    p.add_argument("--only", help="comma list: ats,resolve,linkedin,landingjobs,remotive,remoteok,arbeitnow,himalayas,hn,"
+                                  "assess")
     p.add_argument("--resolve", type=int, default=60, help="max companies to look up careers boards for")
     p.set_defaults(fn=cmd_fetch)
 

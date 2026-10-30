@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from . import db, inbox
+from . import db, inbox, llm
 from .core import Http, Job, company_key, load_profile, load_seed_companies, log
 from .scoring import Scorer, refresh_company_stats, rescore_all
 from .sources.ats import FETCHERS, resolve_ats
@@ -130,6 +131,26 @@ def close_dead_linkedin(conn: sqlite3.Connection, http: Http, profile: dict) -> 
     return closed
 
 
+def assess_new(conn: sqlite3.Connection, profile: dict) -> int:
+    """Have Claude assess the postings waiting on Today, best first, up to `auto_assess` per fetch."""
+    limit = profile.get("auto_assess", 40)
+    ids = [r["id"] for r in inbox.new_jobs(conn, 10_000) if not r["assessment"]][:limit]
+
+    def one(job_id: int) -> bool:
+        c = db.connect()  # one connection per thread
+        try:
+            llm.assess_job(c, job_id)
+            return True
+        except (llm.ClaudeError, OSError, subprocess.TimeoutExpired) as e:
+            log.warning("  assess #%d failed: %s", job_id, e)
+            return False
+        finally:
+            c.close()
+
+    with ThreadPoolExecutor(3) as pool:
+        return sum(pool.map(one, ids))
+
+
 def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
     conn = db.connect()
     http = Http()
@@ -206,6 +227,12 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
 
     rescore_all(conn, scorer)
     refresh_company_stats(conn, profile.get("min_score", 40))
+
+    assessed = 0
+    if want("assess") and profile.get("auto_assess", 40):
+        log.info("Claude assessing new postings (up to %d)...", profile.get("auto_assess", 40))
+        assessed = assess_new(conn, profile)
+        log.info("  %d assessed", assessed)
     started = conn.execute("SELECT started FROM runs WHERE id = ?", (run_id,)).fetchone()[0]
     inbox_jobs = inbox.new_jobs(conn, 10_000)
     inbox_companies = inbox.new_companies(conn, 10_000)
@@ -213,6 +240,7 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
         "collected": collected_total,
         "new": new,
         "closed": closed,
+        "assessed": assessed,
         "new_fits": sum(1 for j in inbox_jobs if j["first_seen"] >= started),
         "new_companies": sum(1 for c in inbox_companies if (c["first_seen"] or "") >= started),
         "inbox_jobs": len(inbox_jobs),
