@@ -29,6 +29,7 @@
       <button class="primary" data-busy="Reading…">{{ 'Upload a new CV' if cv_chars else 'Upload CV' }}</button>
     </form>
   </div>
+  {% if error %}<p class="error">{{ error }}</p>{% endif %}
   {{ task_state('cv') }}
   {% if tasks.get('cv') == 'running' %}<p class="meta">Reading your CV takes about a minute.</p>{% endif %}
 </div>

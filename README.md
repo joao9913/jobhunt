@@ -18,7 +18,7 @@ You need:
 Then:
 
 ```sh
-git clone <this repo> jobhunt && cd jobhunt
+git clone https://github.com/joao9913/jobhunt.git && cd jobhunt
 uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
 ```
 

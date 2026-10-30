@@ -168,7 +168,7 @@ def create_app() -> Flask:
         return render_template("profile.html", p=values, suggested=suggested, roles=profile.ROLES,
                                countries=sorted(core._COUNTRIES), cv_chars=len(cv),
                                cv_name=next((f.name for f in sorted(core.DATA.glob("cv_upload.*"))), None),
-                               saved=request.args.get("saved"))
+                               saved=request.args.get("saved"), error=request.args.get("error"))
 
     @app.post("/profile")
     def profile_save():
@@ -197,15 +197,21 @@ def create_app() -> Flask:
         upload = request.files.get("cv")
         suffix = Path(upload.filename or "").suffix.lower() if upload else ""
         if suffix not in (".pdf", ".docx", ".txt", ".md", ".html", ".htm"):
-            abort(400, "Upload a PDF, Word (.docx), HTML, Markdown or text file.")
+            return redirect(url_for("profile_page", error="Upload a PDF, Word (.docx), HTML, Markdown or text file."))
         core.DATA.mkdir(exist_ok=True)
+        incoming = core.DATA / f"cv_incoming{suffix}"  # the old CV stays until this one reads fine
+        upload.save(incoming)
+        try:
+            text = profile.cv_to_text(incoming)
+        except Exception:  # broken or password-protected file
+            text = ""
+        if len(text) < 200:
+            incoming.unlink()
+            return redirect(url_for("profile_page", error="Couldn't read text from that file. If it's a scanned PDF, "
+                                                          "upload a text-based PDF or a Word file."))
         for old in core.DATA.glob("cv_upload.*"):
             old.unlink()
-        path = core.DATA / f"cv_upload{suffix}"
-        upload.save(path)
-        text = profile.cv_to_text(path)
-        if len(text) < 200:
-            abort(400, "Couldn't read text from that file. If it's a scanned PDF, upload a text-based PDF or .docx.")
+        incoming.rename(core.DATA / f"cv_upload{suffix}")
         profile.CV_TEXT.write_text(text)
         core.cv_text.cache_clear()
         _run("cv", lambda conn: profile.from_cv(text))
