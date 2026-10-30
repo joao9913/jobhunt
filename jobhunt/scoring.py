@@ -78,6 +78,11 @@ def _years_text(req: tuple[int, int | None]) -> str:
     return f"asks {lo}+ years" if hi is None else f"asks {lo} years" if hi == lo else f"asks {lo}-{hi} years"
 
 
+def _years_points(short: int) -> int:
+    """Points for a posting's minimum years against yours: short = how many years you're missing."""
+    return 8 if short <= 0 else {1: -4, 2: -14, 3: -24}.get(short, -32)
+
+
 def _is_senior(req: tuple[int, int | None]) -> bool:
     lo, hi = req
     return lo >= 4 or (lo == 3 and (hi is None or hi > 3))
@@ -143,6 +148,7 @@ class Scorer:
         self.remote_ok = loc["remote_ok"]
         self.remote_reject = loc["remote_reject"]
         self.excluded_companies = {s.lower() for s in p.get("exclude_companies", [])}
+        self.my_years = p.get("experience_years", 1)
 
     # Returns (score, reasons, rejected_reason). A rejected job gets score 0.
     def score(self, job: sqlite3.Row | dict) -> tuple[int, list[str], str | None]:
@@ -188,6 +194,12 @@ class Scorer:
             reasons.append("no Python mentioned")
         if not desc:
             reasons.append("no description yet")
+
+        years = years_asked(desc)
+        if years:
+            pts = _years_points(years[0] - self.my_years)
+            score += pts
+            reasons.append(f"{_years_text(years)}, you have {self.my_years}: {pts:+d}")
 
         flagged: set[str] = set()
         for rx, pts, why in self.red_flags:

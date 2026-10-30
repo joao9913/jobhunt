@@ -60,6 +60,9 @@ CV:
 
 Story (in their words):
 {p.get('story', '')}
+
+Experience, as they count it: {p.get('experience_years', 1)} year(s) of professional backend/Python.
+{p.get('experience_note', '')}
 </candidate>
 
 <rules_for_anything_written_as_the_candidate>
@@ -99,7 +102,8 @@ Return ONLY a JSON object:
   "company_type": "tech" | "non-tech with in-house dev team" | "agency/consultancy" | "unknown"
 }}
 
-If the company is a startup, weigh ownership and breadth (things they built or ran end to end) as
+Judge "years" against the experience they count above, not the CV's dates: a role asking for 3+ years of
+backend is a real gap. If the company is a startup, weigh ownership and breadth (things they built or ran end to end) as
 strengths; startups often care less about years and titles."""
 
 
