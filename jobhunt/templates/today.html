@@ -30,14 +30,25 @@
 <div class="panel" id="postings">
   <div class="row" style="justify-content:space-between">
     <h2>New postings</h2>
-    {% if jobs %}
-    <form method="post" action="/inbox/seen">
-      {% for j in jobs %}<input type="hidden" name="job" value="{{ j.id }}">{% endfor %}
-      <button>Mark all {{ jobs|length }} as seen</button>
-    </form>
-    {% endif %}
+    <div class="row">
+      <form method="get" class="inline">
+        {% for k, v in request.args.items() if k not in ('level', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <select name="level" class="autosubmit">
+          <option value="" {{ 'selected' if not level }}>all levels</option>
+          <option value="junior-mid" {{ 'selected' if level == 'junior-mid' }}>junior–mid (up to 3 years)</option>
+          <option value="senior" {{ 'selected' if level == 'senior' }}>senior (4+ years)</option>
+          <option value="none" {{ 'selected' if level == 'none' }}>level not stated</option>
+        </select>
+      </form>
+      {% if shown %}
+      <form method="post" action="/inbox/seen">
+        {% for j in shown %}<input type="hidden" name="job" value="{{ j.id }}">{% endfor %}
+        <button>Mark all {{ shown|length }}{{ ' shown' if level }} as seen</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
-  {% if jobs %}
+  {% if shown %}
   <table>
     {% for j in pg.items %}
     {% set co = kinds.get(j.company_key) %}
@@ -46,6 +57,7 @@
       <td class="t"><a href="/jobs/{{ j.id }}">{{ j.title }}</a>
         <div class="meta">{% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
           · {{ j.location }}
+          {% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why }}">{{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }}</span>{% endif %}
           {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
           {% set a = j.assessment|loads %}{% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
           {% if co and co.startup %} <span class="pill startup">startup</span>{% endif %}
@@ -59,6 +71,7 @@
     {% endfor %}
   </table>
   {{ pager(pg) }}
+  {% elif jobs %}<p class="empty">No new postings at this level. Pick another level above.</p>
   {% else %}<p class="empty">You're up to date. New postings appear here after the next fetch.</p>{% endif %}
 </div>
 

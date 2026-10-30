@@ -12,6 +12,7 @@
       {% if company %}<a href="/companies/{{ company.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
       · {{ j.location }}{% if j.remote %} · remote{% endif %}
       {% if j.salary %} · {{ j.salary }}{% endif %}
+      {% if j.seniority %} · {{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }} ({{ j.seniority_why }}){% endif %}
       · posted {{ (j.posted_at or j.first_seen)[:10] }}
     </p>
   </div>

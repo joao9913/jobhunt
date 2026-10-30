@@ -29,6 +29,49 @@ RESIDENCY = re.compile(
     r"right to work in (the uk|germany|france|the netherlands|spain|poland|ireland)|"
     r"(only|exclusively) (candidates|applicants) (based|located|residing) in", re.I)
 
+# ---------- seniority ----------
+# Junior-mid: asks for up to 3 years. Senior: asks for more, or the title says so.
+
+_NUM = r"\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez"
+_WORDS = {w: i for i, ws in enumerate(["", "one um uma", "two dois duas", "three tres três", "four quatro", "five cinco",
+                                       "six seis", "seven sete", "eight oito", "nine nove", "ten dez"]) for w in ws.split()}
+_YEARS = re.compile(
+    rf"(?<![\d.,])({_NUM})\s*(?:\+|plus)?\s*(?:(?:-|–|to|a)\s*(?:{_NUM})\s*\+?\s*)?(?:years?|yrs?|anos)\b(?:'|’)?"
+    r"[^.\n;]{0,60}?(?:experience|experiência|exp\b|background|working|in (?:software|backend|python|a similar))|"
+    rf"(?:experience|experiência)[^.\n;]{{0,40}}?(?:at least|minimum(?: of)?|min\.?|over|more than)?\s*({_NUM})\s*\+?\s*"
+    rf"(?:(?:-|–|to)\s*(?:{_NUM})\s*)?(?:years?|yrs?|anos)", re.I)
+_TITLE_SENIOR = re.compile(r"\b(senior|s[eé]nior|sr\.?|lead|staff|principal|head|architect|manager|expert|iii|iv)\b", re.I)
+_TITLE_JUNIOR = re.compile(r"\b(junior|j[uú]nior|jr\.?|graduate|entry|trainee|intern(ship)?|est[aá]gi\w*|mid|"
+                           r"intermediate|associate|ii)\b", re.I)
+
+
+def years_asked(desc: str) -> int | None:
+    """The strictest years-of-experience requirement in a description, if it states one."""
+    found = []
+    for m in _YEARS.finditer(desc or ""):
+        raw = (m.group(1) or m.group(2)).lower()
+        n = int(raw) if raw.isdigit() else _WORDS.get(raw.replace("ê", "e"))
+        if n and n <= 15:  # bigger numbers are company history ("20 years of serving clients")
+            found.append(n)
+    return max(found) if found else None
+
+
+def seniority(title: str, desc: str) -> tuple[str | None, str]:
+    """("junior-mid" | "senior" | None, why). Title words win; otherwise the years the posting asks for."""
+    senior, junior = _TITLE_SENIOR.search(title or ""), _TITLE_JUNIOR.search(title or "")
+    years = years_asked(desc)
+    asks = f"asks {years}+ years" if years else ""
+    if senior and not junior:
+        return "senior", f"title: {senior.group(0)}" + (f", {asks}" if asks else "")
+    if junior and not senior:
+        return "junior-mid", f"title: {junior.group(0)}" + (f", {asks}" if asks else "")
+    if years:  # no title word, or both ("Mid/Senior"): go by the years
+        return ("senior" if years >= 4 else "junior-mid"), asks
+    if senior:
+        return "senior", f"title: {senior.group(0)}"
+    return None, ""
+
+
 _STOP = {
     "en": "the and to of you we with for our will are your this that",
     "pt": "de para com uma não você os das dos são equipa",
@@ -194,9 +237,12 @@ def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:
     rows = conn.execute("SELECT id, company, title, description, location, remote FROM jobs").fetchall()
     for r in rows:
         s, reasons, rejected = scorer.score(r)
+        level, level_why = seniority(r["title"], r["description"])
         conn.execute(
-            "UPDATE jobs SET score = ?, reasons = ?, rejected = ?, remote_check = ? WHERE id = ?",
-            (s, json.dumps(reasons), rejected, int(rejected is None and scorer.remote_check(r)), r["id"]),
+            """UPDATE jobs SET score = ?, reasons = ?, rejected = ?, remote_check = ?, seniority = ?, seniority_why = ?
+               WHERE id = ?""",
+            (s, json.dumps(reasons), rejected, int(rejected is None and scorer.remote_check(r)), level, level_why,
+             r["id"]),
         )
     conn.commit()
     return len(rows)

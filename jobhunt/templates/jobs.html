@@ -5,7 +5,7 @@
 <form class="filters" method="get">
   <span class="tabs">
     {% for s in TRIAGE_STATUSES + ['all'] %}
-    <a href="?status={{ s }}&min={{ min_score }}&q={{ q|q }}&remote={{ remote }}&startup={{ startup }}&country={{ country|q }}&rcheck={{ rcheck }}" class="{{ 'on' if s == status }}">{{ STATUS_LABELS.get(s, s) }}</a>
+    <a href="?status={{ s }}&min={{ min_score }}&q={{ q|q }}&remote={{ remote }}&startup={{ startup }}&country={{ country|q }}&rcheck={{ rcheck }}&level={{ level }}" class="{{ 'on' if s == status }}">{{ STATUS_LABELS.get(s, s) }}</a>
     {% endfor %}
     <a href="/applications">applied →</a>
   </span>
@@ -15,6 +15,12 @@
     <option value="" {{ 'selected' if not remote }}>remote + on-site</option>
     <option value="1" {{ 'selected' if remote == '1' }}>remote only</option>
     <option value="0" {{ 'selected' if remote == '0' }}>on-site / hybrid only</option>
+  </select>
+  <select name="level" class="autosubmit">
+    <option value="" {{ 'selected' if not level }}>all levels</option>
+    <option value="junior-mid" {{ 'selected' if level == 'junior-mid' }}>junior–mid (up to 3 years)</option>
+    <option value="senior" {{ 'selected' if level == 'senior' }}>senior (4+ years)</option>
+    <option value="none" {{ 'selected' if level == 'none' }}>level not stated</option>
   </select>
   <select name="rcheck" class="autosubmit">
     <option value="" {{ 'selected' if not rcheck }}>from Lisbon: confirmed + to check</option>
@@ -51,6 +57,7 @@
         {% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
         {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}
         {% if co and co.startup %} <span class="pill startup">startup{% if co.stage %} · {{ co.stage }}{% endif %}</span>{% endif %}
+        {% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why }}">{{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }}</span>{% endif %}
         {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from Portugal: ask the recruiter before applying">check remote</span>{% endif %}
         {% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
       </div>

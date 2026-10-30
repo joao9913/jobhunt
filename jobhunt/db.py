@@ -122,7 +122,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
             conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {decl}")
     have = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
     for col, decl in [("seen", "INTEGER NOT NULL DEFAULT 0"), ("applied_on", "TEXT"), ("closed_on", "TEXT"),
-                      ("checked_on", "TEXT"), ("remote_check", "INTEGER NOT NULL DEFAULT 0")]:  # checked_on: last time we checked it still takes applications
+                      ("checked_on", "TEXT"), ("remote_check", "INTEGER NOT NULL DEFAULT 0"),
+                      ("seniority", "TEXT"), ("seniority_why", "TEXT")]:  # junior-mid | senior | NULL (not stated)  # checked_on: last time we checked it still takes applications
         if col not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
     conn.commit()
