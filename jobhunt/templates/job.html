@@ -24,10 +24,6 @@
     <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored">
       <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
     {% endif %}
-    {% if j.status in ['new', 'interested'] %}
-    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="closed">
-      <button title="The employer stopped taking applications">Closed</button></form>
-    {% endif %}
     <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">Open posting ↗</a></div>
 </div>
 
