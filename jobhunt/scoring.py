@@ -6,7 +6,7 @@ import json
 import re
 import sqlite3
 
-from .core import ascii_lower, has_term, load_profile
+from .core import REMOTE_NO_COUNTRY, UNKNOWN_COUNTRY, ascii_lower, countries, has_term, load_profile
 
 ENG_TITLE = re.compile(
     r"engineer|developer|programmer|software|backend|back-end|python|django|devops|\bsre\b|"
@@ -23,6 +23,20 @@ REMOTE_NON_EU = re.compile(
     r"(must|need to|required to) (be )?(located|based|reside|live) in the (us|u\.s\.|united states|usa|americas)|"
     r"\b(us|u\.s\.)[- ](based|only|residents?)\b|remote[^.\n]{0,40}\b(us|usa|united states|latam|americas|india|apac)\b only", re.I)
 
+
+# Office attendance in the description: "3 days a week in the office", "Hybrid (2-3 days/week onsite)",
+# "hybrid role based in Vilnius". Job boards often list these under remote, so the text decides.
+_N = r"(?:\d|one|two|three|four|five)"
+_DAYS = rf"(?:at least |minimum (?:of )?)?{_N}(?:\s*(?:-|–|to)\s*{_N})?\s*(?:days?|x|times)\s*(?:a|per|/|each|every|in the|of the)?\s*(?:week|wk)"
+_OFFICE = r"(?:office|on-?site|in[- ]person|hq|headquarters)"
+OFFICE_DAYS = re.compile(
+    rf"{_DAYS}[^.\n]{{0,50}}{_OFFICE}|{_OFFICE}[^.\n]{{0,50}}{_DAYS}|hybrid (?:role|position|job) based in|"
+    r"based in or near|regular (?:presence|attendance) (?:in|at) (?:the|our) office|office.(?:led|first) culture|"
+    r"(?:location|work(?:ing)? (?:model|mode|policy|setup))\s*[:\-–]\s*hybrid|\|\s*hybrid\b|\bhybrid\s*\(", re.I)
+HYBRID = re.compile(r"\bhybrid\b(?!\s*(?:cloud|infrastructure|infra|environments?|apps?|mobile|search|architecture|"
+                    r"systems?|on-prem|deployments?))|\bh[ií]brido\b", re.I)
+REMOTE_TOO = re.compile(r"fully remote|100% remote|remote.first|work from anywhere|full remote|remote-friendly|"
+                        r"remote\s*(?:or|and|/)\s*hybrid|hybrid\s*(?:or|and|/)\s*remote", re.I)
 
 RESIDENCY = re.compile(
     r"(must|need to|required to|should) (be )?(located|based|reside|live|resident) in (?!the eu|europe|the european)|"
@@ -222,6 +236,22 @@ class Scorer:
     # home: your city's area (any mode), remote from your country, or remote open to Europe.
     # `check` marks postings that don't say whether they hire from your country.
     def _location(self, job, title: str, location: str, desc: str) -> tuple[bool, int, str, bool]:
+        ok, pts, reason, check = self._where(job, title, location, desc)
+        if not ok or not desc or any(has_term(location, w) for w in self.home):
+            return ok, pts, reason, check
+        # Listed in a city you don't live in (another country, or elsewhere in yours): hybrid means commuting there.
+        found = countries(job["location"])
+        abroad = found[0] not in (REMOTE_NO_COUNTRY, UNKNOWN_COUNTRY) and self.country_name not in found
+        elsewhere = any(has_term(ascii_lower(location), p) for p in self.places)
+        if abroad or elsewhere:
+            office = OFFICE_DAYS.search(desc) or HYBRID.search(desc)
+            if office and not REMOTE_TOO.search(desc):
+                return False, 0, f"hybrid / office days in {location[:40]}", False
+            if office:
+                return ok, pts - 4, f"{reason}; mentions hybrid (check it can be fully remote)", True
+        return ok, pts, reason, check
+
+    def _where(self, job, title: str, location: str, desc: str) -> tuple[bool, int, str, bool]:
         remote = job["remote"]
         if re.search(r"\bhybrid\b|\bh[ií]brido\b|on-?site|presencial", title):
             remote = False  # the title beats the search filter
