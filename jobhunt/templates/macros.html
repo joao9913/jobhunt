@@ -40,7 +40,7 @@
 
 {% macro level_select(level, counts) %}
 <select name="level" class="autosubmit">
-  {% for value, label in [('', 'all levels'), ('junior-mid', 'junior–mid (up to 3 years)'), ('senior', 'senior (4+ years)'),
+  {% for value, label in [('', 'all levels'), ('junior-mid', 'junior–mid (up to 3 years)'), ('senior', 'senior (3+ years)'),
                           ('none', 'level not stated')] %}
   <option value="{{ value }}" {{ 'selected' if level == value }}>{{ label }} ({{ counts.get(value, 0) }})</option>
   {% endfor %}
