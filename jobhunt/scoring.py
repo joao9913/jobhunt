@@ -30,43 +30,70 @@ RESIDENCY = re.compile(
     r"(only|exclusively) (candidates|applicants) (based|located|residing) in", re.I)
 
 # ---------- seniority ----------
-# Junior-mid: asks for up to 3 years. Senior: asks for more, or the title says so.
+# Junior-mid: what it asks fits within 1-3 years ("2+", "1-3", "3 years"). Senior: asks for more, including
+# open-ended "3+" / "at least 3" and ranges past 3 ("3-5"), or the title says so.
 
 _NUM = r"\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez"
 _WORDS = {w: i for i, ws in enumerate(["", "one um uma", "two dois duas", "three tres três", "four quatro", "five cinco",
                                        "six seis", "seven sete", "eight oito", "nine nove", "ten dez"]) for w in ws.split()}
 _YEARS = re.compile(
-    rf"(?<![\d.,])({_NUM})\s*(?:\+|plus)?\s*(?:(?:-|–|to|a)\s*(?:{_NUM})\s*\+?\s*)?(?:years?|yrs?|anos)\b(?:'|’)?"
-    r"[^.\n;]{0,60}?(?:experience|experiência|exp\b|background|working|in (?:software|backend|python|a similar))|"
-    rf"(?:experience|experiência)[^.\n;]{{0,40}}?(?:at least|minimum(?: of)?|min\.?|over|more than)?\s*({_NUM})\s*\+?\s*"
-    rf"(?:(?:-|–|to)\s*(?:{_NUM})\s*)?(?:years?|yrs?|anos)", re.I)
+    rf"(?<![\d.,])(?P<a>{_NUM})\s*(?P<ap>\+|plus|or more)?\s*(?:(?:-|–|to|a)\s*(?P<ar>{_NUM})\s*(?P<arp>\+)?\s*)?"
+    r"(?:years?|yrs?|anos)\b(?P<aor>\s*or more)?(?:'|’)?"
+    r"[^.\n;]{0,60}?(?:experience|experiência|exp\b|background|working|professional|hands-on|commercial|"
+    r"(?:software|backend|python) (?:development|engineering)|in (?:software|backend|python|a similar))|"
+    rf"(?:experience|experiência)[^.\n;]{{0,40}}?(?P<bmin>at least|minimum(?: of)?|min\.?|over|more than)?\s*"
+    rf"(?P<b>{_NUM})\s*(?P<bp>\+)?\s*(?:(?:-|–|to)\s*(?P<br>{_NUM})\s*)?(?:years?|yrs?|anos)", re.I)
+_AT_LEAST = re.compile(r"(at least|minimum(?: of)?|min\.?|over|more than|no less than|pelo menos|m[ií]nimo de)\s*$", re.I)
 _TITLE_SENIOR = re.compile(r"\b(senior|s[eé]nior|sr\.?|lead|staff|principal|head|architect|manager|expert|iii|iv)\b", re.I)
 _TITLE_JUNIOR = re.compile(r"\b(junior|j[uú]nior|jr\.?|graduate|entry|trainee|intern(ship)?|est[aá]gi\w*|mid|"
                            r"intermediate|associate|ii)\b", re.I)
 
 
-def years_asked(desc: str) -> int | None:
-    """The strictest years-of-experience requirement in a description, if it states one."""
+def _num(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    raw = raw.lower()
+    return int(raw) if raw.isdigit() else _WORDS.get(raw.replace("ê", "e"))
+
+
+def years_asked(desc: str) -> tuple[int, int | None] | None:
+    """The strictest years-of-experience requirement in a description as (min, max), max None when
+    open-ended ("3+", "at least 3"). None if it states none."""
     found = []
     for m in _YEARS.finditer(desc or ""):
-        raw = (m.group(1) or m.group(2)).lower()
-        n = int(raw) if raw.isdigit() else _WORDS.get(raw.replace("ê", "e"))
-        if n and n <= 15:  # bigger numbers are company history ("20 years of serving clients")
-            found.append(n)
-    return max(found) if found else None
+        g = m.groupdict()
+        lo = _num(g["a"] or g["b"])
+        if not lo or lo > 15:  # bigger numbers are company history ("20 years of serving clients")
+            continue
+        hi = _num(g["ar"] or g["br"])
+        before = (desc[max(0, m.start() - 20):m.start()])
+        open_ended = bool(g["ap"] or g["arp"] or g["aor"] or g["bp"] or g["bmin"] or _AT_LEAST.search(before))
+        found.append((lo, None if open_ended else (hi or lo)))
+    # Strictest = the one that needs the most experience; open-ended beats a closed range with the same minimum.
+    return max(found, key=lambda r: (r[0], r[1] is None, r[1] or 0)) if found else None
+
+
+def _years_text(req: tuple[int, int | None]) -> str:
+    lo, hi = req
+    return f"asks {lo}+ years" if hi is None else f"asks {lo} years" if hi == lo else f"asks {lo}-{hi} years"
+
+
+def _is_senior(req: tuple[int, int | None]) -> bool:
+    lo, hi = req
+    return lo >= 4 or (lo == 3 and (hi is None or hi > 3))
 
 
 def seniority(title: str, desc: str) -> tuple[str | None, str]:
     """("junior-mid" | "senior" | None, why). Title words win; otherwise the years the posting asks for."""
     senior, junior = _TITLE_SENIOR.search(title or ""), _TITLE_JUNIOR.search(title or "")
     years = years_asked(desc)
-    asks = f"asks {years}+ years" if years else ""
+    asks = _years_text(years) if years else ""
     if senior and not junior:
         return "senior", f"title: {senior.group(0)}" + (f", {asks}" if asks else "")
     if junior and not senior:
         return "junior-mid", f"title: {junior.group(0)}" + (f", {asks}" if asks else "")
     if years:  # no title word, or both ("Mid/Senior"): go by the years
-        return ("senior" if years >= 4 else "junior-mid"), asks
+        return ("senior" if _is_senior(years) else "junior-mid"), asks
     if senior:
         return "senior", f"title: {senior.group(0)}"
     return None, ""
