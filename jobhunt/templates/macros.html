@@ -1,10 +1,10 @@
 {% macro score(n) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }}">{{ n }}</span>{% endmacro %}
 
-{% macro draft(label, text) %}
-{% if text %}
-<div class="label">{{ label }}{% if text|length < 320 %} · {{ text|length }} chars{% endif %}</div>
-<div class="draft"><button class="copy" type="button">Copy</button><div class="text">{{ text }}</div></div>
-{% endif %}
+{# A drafted message you can edit; goes inside a form.edit-draft with a .save button (see base.html). #}
+{% macro draft_field(label, name, text, rows=8) %}
+<div class="label">{{ label }}{% if rows > 1 %} · <span class="chars">{{ (text or '')|length }}</span> chars{% endif %}</div>
+<div class="draft"><button class="copy" type="button">Copy</button>{% if rows == 1 %}<input class="text" name="{{ name }}" value="{{ text or '' }}">
+  {%- else %}<textarea class="text" name="{{ name }}" rows="{{ rows }}">{{ text or '' }}</textarea>{% endif %}</div>
 {% endmacro %}
 
 {% macro task_state(key) %}

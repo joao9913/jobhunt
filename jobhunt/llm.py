@@ -220,11 +220,17 @@ manually, so make them ready to send.
 
 Return ONLY a JSON object:
 {{
-  "cover_note": "120-180 words for the application form / email. Lead with the angle. No 'Dear Sir/Madam'.",
-  "linkedin_note_recruiter": "LinkedIn connection note to the recruiter for this role, max 280 characters.",
-  "message_hiring_manager": "70-120 words to the engineering manager or tech lead: why this team, one proof point, a soft ask.",
-  "subject": "email subject line"
+{fields}
 }}"""
+
+# What each message button writes. The cover note comes with its email subject.
+JOB_MESSAGES = {
+    "cover": {"cover_note": "120-180 words for the application form / email. Lead with the angle. No 'Dear Sir/Madam'.",
+              "subject": "email subject line"},
+    "recruiter": {"linkedin_note_recruiter": "LinkedIn connection note to the recruiter for this role, max 280 characters."},
+    "manager": {"message_hiring_manager": "70-120 words to the engineering manager or tech lead: why this team, one "
+                                          "proof point, a soft ask."},
+}
 
 DRAFT_COMPANY = """Write cold outreach from this candidate to people at a company that has an in-house tech team.
 There may be no open role that fits; the goal is a short conversation and being remembered when one opens.
@@ -253,13 +259,20 @@ Return ONLY a JSON object:
 }}"""
 
 
-def draft_for_job(conn: sqlite3.Connection, job_id: int) -> dict:
+def draft_for_job(conn: sqlite3.Connection, job_id: int, kinds: list[str] | None = None) -> dict:
+    """Write the messages in `kinds` (keys of JOB_MESSAGES; all by default), keeping the others already drafted."""
     job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     assessment = f"<assessment>{job['assessment']}</assessment>" if job["assessment"] else ""
-    result = parse_json(run_claude(DRAFT_JOB.format(me=_me(), job=_job_block(job), assessment=assessment)))
-    conn.execute("UPDATE jobs SET drafts = ? WHERE dedup_key = ?", (json.dumps(result), job["dedup_key"]))
+    wanted = {k: v for kind in (kinds or JOB_MESSAGES) for k, v in JOB_MESSAGES[kind].items()}
+    fields = ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in wanted.items())
+    result = parse_json(run_claude(DRAFT_JOB.format(me=_me(), job=_job_block(job), assessment=assessment,
+                                                    fields=fields)))
+    # Re-read: another message for this job may have been drafted while Claude was writing this one.
+    current = conn.execute("SELECT drafts FROM jobs WHERE id = ?", (job_id,)).fetchone()["drafts"]
+    drafts = {**json.loads(current or "{}"), **{k: result[k] for k in wanted if k in result}}
+    conn.execute("UPDATE jobs SET drafts = ? WHERE dedup_key = ?", (json.dumps(drafts), job["dedup_key"]))
     conn.commit()
-    return result
+    return drafts
 
 
 def draft_for_company(conn: sqlite3.Connection, company_id: int, person: str = "") -> dict:

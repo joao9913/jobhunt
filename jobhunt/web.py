@@ -408,8 +408,23 @@ def create_app() -> Flask:
 
     @app.post("/jobs/<int:job_id>/draft")
     def job_draft(job_id):
-        _run(f"draft:{job_id}", llm.draft_for_job, job_id)
+        kind = request.form.get("kind", "")
+        if kind in llm.JOB_MESSAGES:
+            _run(f"draft:{job_id}:{kind}", llm.draft_for_job, job_id, [kind])
+        else:
+            _run(f"draft:{job_id}", llm.draft_for_job, job_id)
         return redirect(url_for("job", job_id=job_id))
+
+    @app.post("/jobs/<int:job_id>/drafts")
+    def job_drafts_save(job_id):
+        """Your edits to drafted messages; the fields in the form replace the drafted ones."""
+        c = conn()
+        j = c.execute("SELECT drafts, dedup_key FROM jobs WHERE id = ?", (job_id,)).fetchone() or abort(404)
+        keys = {k for kind in llm.JOB_MESSAGES.values() for k in kind}
+        drafts = {**_loads(j["drafts"], {}), **{k: v.replace("\r\n", "\n") for k, v in request.form.items() if k in keys}}
+        c.execute("UPDATE jobs SET drafts = ? WHERE dedup_key = ?", (json.dumps(drafts), j["dedup_key"]))
+        c.commit()
+        return redirect(url_for("job", job_id=job_id) + "#messages")
 
     # ---------- companies ----------
 
@@ -461,6 +476,20 @@ def create_app() -> Flask:
         return render_template("company.html", co=co, jobs=jobs_, log=log_, searches=searches,
                                research=_loads(co["research"], {}), drafts=_loads(co["drafts"], {}),
                                today=db.today())
+
+    @app.post("/companies/<int:cid>/drafts")
+    def company_drafts_save(cid):
+        """Your edits to the messages drafted for one person at this company."""
+        c = conn()
+        co = c.execute("SELECT drafts FROM companies WHERE id = ?", (cid,)).fetchone() or abort(404)
+        drafts = _loads(co["drafts"], {})
+        person = request.form.get("person", "")
+        if person in drafts:
+            drafts[person].update({k: request.form[k].replace("\r\n", "\n")
+                                   for k in ("subject", "linkedin_note", "message", "followup") if k in request.form})
+            c.execute("UPDATE companies SET drafts = ?, updated_at = ? WHERE id = ?", (json.dumps(drafts), db.now(), cid))
+            c.commit()
+        return redirect(url_for("company", cid=cid) + "#drafts")
 
     @app.post("/companies/<int:cid>/status")
     def company_status(cid):

@@ -110,6 +110,8 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
 .runlog .current::after { content: "…"; }
 .bar { height: 8px; border-radius: 99px; background: var(--soft); overflow: hidden; margin: 6px 0 4px; }
 .bar > div { height: 100%; background: var(--accent); transition: width .4s; }
+.edit-draft .draft { padding: 0; }
+.edit-draft .draft .text { width: 100%; border: 0; background: transparent; padding: 12px 64px 12px 14px; font-size: 13.5px; resize: vertical; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 </style>
 </head>
@@ -192,8 +194,17 @@ try {
 document.addEventListener("click", (e) => {
   const b = e.target.closest(".copy");
   if (!b) return;
-  navigator.clipboard.writeText(b.parentElement.querySelector(".text").innerText);
+  const t = b.parentElement.querySelector(".text");
+  navigator.clipboard.writeText("value" in t ? t.value : t.innerText);
   b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1200);
+});
+// Edited drafts: the Save button wakes up on a change, the character count follows the text.
+document.addEventListener("input", (e) => {
+  const f = e.target.closest("form.edit-draft");
+  if (!f) return;
+  Object.assign(f.querySelector(".save"), { disabled: false, textContent: "Save changes", className: "save primary" });
+  const count = e.target.closest(".draft")?.previousElementSibling?.querySelector(".chars");
+  if (count) count.textContent = e.target.value.length;
 });
 document.addEventListener("change", (e) => { if (e.target.matches("select.autosubmit")) e.target.form.submit(); });
 document.addEventListener("submit", (e) => { const b = e.target.querySelector("button[data-busy]"); if (b) { b.disabled = true; b.textContent = b.dataset.busy; } });

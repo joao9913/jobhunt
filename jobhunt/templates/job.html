@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import score, draft, task_state, job_status with context %}
+{% from "macros.html" import score, draft_field, task_state, job_status with context %}
 {% block title %}{{ j.title }} · jobhunt{% endblock %}
 {% block body %}
 {% set a = j.assessment|loads %}
@@ -47,17 +47,29 @@
       {% else %}<p class="meta">Not assessed yet. Takes ~20 seconds.</p>{% endif %}
     </div>
 
-    <div class="panel">
+    <div class="panel" id="messages">
       <div class="row" style="justify-content:space-between"><h2>Messages</h2>
-        <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="Drafting…">{{ 'Redraft' if d else 'Draft messages' }}</button></form></div>
+        <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="Drafting…">{{ 'Redraft all' if d else 'Draft all' }}</button></form></div>
       {{ task_state('draft:' ~ j.id) }}
-      {% if d %}
-        {{ draft('Subject', d.subject) }}
-        {{ draft('Cover note', d.cover_note) }}
-        {{ draft('LinkedIn note to the recruiter', d.linkedin_note_recruiter) }}
-        {{ draft('Message to the hiring manager', d.message_hiring_manager) }}
-        {% if company %}<p class="meta">Find the people on the <a href="/companies/{{ company.id }}">{{ company.name }} page</a>.</p>{% endif %}
-      {% else %}<p class="meta">Cover note, a LinkedIn note for the recruiter and a message for the hiring manager. You edit and send them.</p>{% endif %}
+      <p class="meta">Draft only what you need. You edit and send them yourself.</p>
+      {% for kind, label, keys in [('cover', 'Cover note', ['subject', 'cover_note']),
+                                   ('recruiter', 'LinkedIn note to the recruiter', ['linkedin_note_recruiter']),
+                                   ('manager', 'Message to the hiring manager', ['message_hiring_manager'])] %}
+      {% set have = d and d.get(keys[-1]) %}
+      <div class="row" style="justify-content:space-between; margin-top:12px">
+        <b>{{ label }}</b>
+        <form method="post" action="/jobs/{{ j.id }}/draft"><input type="hidden" name="kind" value="{{ kind }}">
+          <button data-busy="Drafting…" {{ 'disabled' if tasks.get('draft:' ~ j.id ~ ':' ~ kind) == 'running' }}>{{ 'Redraft' if have else 'Draft' }}</button></form>
+      </div>
+      {{ task_state('draft:' ~ j.id ~ ':' ~ kind) }}
+      {% if have %}
+      <form method="post" action="/jobs/{{ j.id }}/drafts" class="edit-draft">
+        {% for k in keys %}{{ draft_field('Subject' if k == 'subject' else 'Text', k, d.get(k), 1 if k == 'subject' else 4 if kind == 'recruiter' else 9) }}{% endfor %}
+        <button class="save" disabled>Saved</button>
+      </form>
+      {% endif %}
+      {% endfor %}
+      {% if company %}<p class="meta">Find the people on the <a href="/companies/{{ company.id }}">{{ company.name }} page</a>.</p>{% endif %}
     </div>
 
     <div class="panel"><h2>Description</h2><div class="desc">{{ j.description or 'No description fetched for this posting. Open the posting to read it.' }}</div></div>

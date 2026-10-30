@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "macros.html" import score, draft, task_state with context %}
+{% from "macros.html" import score, draft_field, task_state with context %}
 {% block title %}{{ co.name }} · jobhunt{% endblock %}
 {% block body %}
 <p class="meta"><a href="/companies">← Companies</a></p>
@@ -73,14 +73,18 @@
     </div>
 
     {% if drafts %}
-    <div class="panel">
+    <div class="panel" id="drafts">
       <h2>Drafts</h2>
       {% for person, d in drafts.items() %}
         <p><b>{{ person }}</b></p>
-        {{ draft('Subject', d.subject) }}
-        {{ draft('LinkedIn connection note', d.linkedin_note) }}
-        {{ draft('Message', d.message) }}
-        {{ draft('Follow-up (a week later)', d.followup) }}
+        <form method="post" action="/companies/{{ co.id }}/drafts" class="edit-draft">
+          <input type="hidden" name="person" value="{{ person }}">
+          {{ draft_field('Subject', 'subject', d.subject, 1) }}
+          {{ draft_field('LinkedIn connection note', 'linkedin_note', d.linkedin_note, 4) }}
+          {{ draft_field('Message', 'message', d.message, 8) }}
+          {{ draft_field('Follow-up (a week later)', 'followup', d.followup, 5) }}
+          <button class="save" disabled>Saved</button>
+        </form>
       {% endfor %}
     </div>
     {% endif %}
