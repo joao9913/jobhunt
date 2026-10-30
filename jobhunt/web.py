@@ -276,7 +276,8 @@ def create_app() -> Flask:
     @app.post("/jobs/<int:job_id>/status")
     def job_status(job_id):
         db.set_job_status(conn(), job_id, request.form["status"])
-        return redirect(request.referrer or url_for("jobs"))
+        nxt = request.form.get("next", "")  # the job page sends you back to the list; only local paths
+        return redirect(nxt if nxt.startswith("/") and not nxt.startswith("//") else request.referrer or url_for("jobs"))
 
     @app.post("/jobs/<int:job_id>/seen")
     def job_seen(job_id):

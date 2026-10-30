@@ -15,13 +15,13 @@
       · posted {{ (j.posted_at or j.first_seen)[:10] }}
     </p>
   </div>
-  <div class="row">{{ score(j.score) }} {{ job_status(j) }}
+  <div class="row">{{ score(j.score) }} {{ job_status(j, "/jobs") }}
     {% if j.status in ['new', 'interested'] %}
-    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="applied">
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="applied"><input type="hidden" name="next" value="/jobs">
       <button title="You applied: move it to Applications">Applied</button></form>
     {% endif %}
     {% if j.status == 'new' %}
-    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored">
+    <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored"><input type="hidden" name="next" value="/jobs">
       <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
     {% endif %}
     <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">Open posting ↗</a></div>

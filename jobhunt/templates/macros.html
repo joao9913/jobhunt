@@ -12,8 +12,9 @@
 {% elif tasks.get(key, '').startswith('error') %}<p class="error">{{ tasks[key] }}</p>{% endif %}
 {% endmacro %}
 
-{% macro job_status(j) %}
+{% macro job_status(j, next=None) %}
 <form class="inline" method="post" action="/jobs/{{ j.id }}/status">
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
   <select name="status" class="autosubmit">
     {% for group, statuses in [('Triage', TRIAGE_STATUSES), ('Application', ACTIVE_STATUSES), ('Close as', CLOSED_STATUSES)] %}
     <optgroup label="{{ group }}">
