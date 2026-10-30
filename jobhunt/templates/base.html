@@ -157,6 +157,10 @@ if (fetchStatus) {
 }
 // Safari can still restore a page from its back-forward cache despite no-store; reload it so it's current.
 addEventListener("pageshow", (e) => { if (e.persisted) location.reload(); });
+// Remember the last list page, so a posting's back link and buttons return to it (see job.html).
+if (/^\/(today|jobs|applications|companies)(\/\d+)?$/.test(location.pathname) && !/^\/jobs\/\d+/.test(location.pathname)) {
+  try { sessionStorage.setItem("backTo", location.pathname); } catch {}
+}
 // Coming back to a list (see the <head> script) also returns to where you were scrolled.
 const scrollKey = "scroll:" + location.pathname + location.search;
 addEventListener("pagehide", () => { try { localStorage.setItem(scrollKey, String(window.scrollY)); } catch {} });

@@ -4,7 +4,7 @@
 {% block body %}
 {% set a = j.assessment|loads %}
 {% set d = j.drafts|loads %}
-<p class="meta"><a href="/jobs">← Jobs</a></p>
+<p class="meta"><a href="/jobs" id="back">← Jobs</a></p>
 <div class="row" style="justify-content:space-between">
   <div>
     <h1>{{ j.title }}</h1>
@@ -81,4 +81,18 @@
     </div>
   </div>
 </div>
+<script>
+// Back to the list you opened this posting from (Today, Jobs, a company...), not always Jobs.
+try {
+  const back = sessionStorage.getItem("backTo");
+  if (back) {
+    const names = { today: "Today", jobs: "Jobs", applications: "Applications", companies: "Companies" };
+    const parts = back.split("?")[0].split("/");
+    const link = document.getElementById("back");
+    link.href = back;
+    link.textContent = "← " + (parts[1] === "companies" && parts[2] ? "Company" : names[parts[1]] || "Back");
+    document.querySelectorAll('input[name="next"]').forEach((i) => (i.value = back));
+  }
+} catch {}
+</script>
 {% endblock %}
