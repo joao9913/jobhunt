@@ -12,7 +12,7 @@ from urllib.parse import quote_plus
 from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
 
 from . import db, inbox, llm
-from .core import countries, load_profile
+from .core import CANCEL, countries, load_profile
 
 _pool = ThreadPoolExecutor(3)
 _tasks: dict[str, str] = {}  # key -> "running" | "error: ..."
@@ -85,6 +85,7 @@ def create_app() -> Flask:
         state = _fetch_state()
         claude_running = sum(1 for k, v in _tasks.items() if k != "fetch" and v == "running")
         return {"tasks": dict(_tasks), "fetching": state["running"], "fetch_step": state["step"],
+                "fetch_cancelling": state["cancelling"],
                 "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
                 "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url}
@@ -142,14 +143,20 @@ def create_app() -> Flask:
 
     @app.post("/fetch")
     def fetch_now():
+        if _tasks.get("fetch") != "running":
+            CANCEL.clear()  # here rather than in fetch(), so a cancel pressed before it really starts still counts
         _run("fetch", _fetch_task)
         return redirect(url_for("fetch_page"))
 
     def _fetch_state() -> dict:
         """The latest fetch: running or not, its current step and log. Also covers terminal/scheduled fetches."""
         r = conn().execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
+        if _tasks.get("fetch") == "running" and (r is None or r["finished"]):  # started, run row not written yet
+            return {"running": True, "step": "Starting", "lines": [], "started": db.now(), "finished": None,
+                    "failed": False, "cancelled": False, "cancelling": CANCEL.is_set()}
         if r is None:
-            return {"running": False, "step": "", "lines": [], "started": None, "finished": None, "failed": False}
+            return {"running": False, "step": "", "lines": [], "started": None, "finished": None, "failed": False,
+                    "cancelled": False, "cancelling": False}
         p = _loads(r["progress"], {})
         lines = p.get("lines", [])
         failed = _tasks.get("fetch", "").startswith("error") or any(x["level"] == "error" for x in lines)
@@ -157,7 +164,18 @@ def create_app() -> Flask:
         stale = conn().execute("SELECT ? < datetime('now', 'localtime', '-3 hour')", (r["started"],)).fetchone()[0]
         running = not r["finished"] and not failed and (_tasks.get("fetch") == "running" or not stale)
         return {"running": running, "step": p.get("step", "Starting"), "lines": lines, "started": r["started"],
-                "finished": r["finished"], "failed": failed or (not r["finished"] and not running)}
+                "finished": r["finished"], "failed": failed or (not r["finished"] and not running),
+                "cancelled": bool(_loads(r["summary"], {}).get("cancelled")),
+                "cancelling": running and bool(r["cancel"])}
+
+    @app.post("/fetch/cancel")
+    def fetch_cancel():
+        c = conn()
+        c.execute("UPDATE runs SET cancel = 1 WHERE finished IS NULL AND id = (SELECT MAX(id) FROM runs)")
+        c.commit()
+        if _tasks.get("fetch") == "running":
+            CANCEL.set()  # running in this process: stop now instead of on the next progress poll
+        return redirect(request.referrer or url_for("fetch_page"))
 
     @app.get("/fetch")
     def fetch_page():

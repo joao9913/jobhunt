@@ -17,6 +17,8 @@ def cmd_fetch(args) -> None:
 
     sources = set(args.only.split(",")) if args.only else None
     summary = fetch(sources, resolve_limit=args.resolve)
+    if summary.get("cancelled"):
+        sys.exit("\nCancelled from the dashboard. Postings found before the cancel are saved.")
     print(f"\nDone: {summary['collected']} postings checked. Today: {summary['new_fits']} new fitting postings, "
           f"{summary['new_companies']} new companies, {summary['assessed']} assessed by Claude. Inbox: {summary['inbox_jobs']} postings, "
           f"{summary['inbox_companies']} companies you haven't seen. Review with `jobhunt today` or `jobhunt serve`.")

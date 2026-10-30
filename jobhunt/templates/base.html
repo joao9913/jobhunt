@@ -102,11 +102,14 @@ ul.tight { margin: 4px 0 12px; padding-left: 18px; }
     <a href="/companies" class="{{ 'on' if request.path.startswith('/companies') }}">Companies</a>
   </nav>
   <div class="right">
-    {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="See what the fetch is doing">Fetching: {{ fetch_step }} →</a>
+    {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="See what the fetch is doing">{{ 'Cancelling, finishing the current request' if fetch_cancelling else 'Fetching: ' ~ fetch_step }} →</a>
     {% else %}<a href="/fetch" class="meta">Last fetch</a>{% endif %}
     {% set running = claude_running %}
     {% if running %}<span class="working">{{ running }} Claude task{{ 's' if running > 1 }} running</span>{% endif %}
-    <form class="inline" method="post" action="/fetch"><button {{ 'disabled' if fetching }}>Fetch now</button></form>
+    <form class="inline" id="fetch-form" method="post" action="{{ '/fetch/cancel' if fetching else '/fetch' }}">
+      {% if fetching %}<button id="fetch-btn" {{ 'disabled' if fetch_cancelling }}>{{ 'Cancelling…' if fetch_cancelling else 'Cancel' }}</button>
+      {% else %}<button id="fetch-btn" class="primary" title="Search every source for new postings">Search</button>{% endif %}
+    </form>
   </div>
 </header>
 <main>{% block body %}{% endblock %}</main>
@@ -117,10 +120,18 @@ if (fetchStatus) {
   const poll = setInterval(async () => {
     try {
       const s = await (await fetch("/fetch/status")).json();
-      if (s.running) { fetchStatus.textContent = `Fetching: ${s.step} →`; return; }
+      const btn = document.getElementById("fetch-btn");
+      if (s.running) {
+        fetchStatus.textContent = s.cancelling ? "Cancelling, finishing the current request →" : `Fetching: ${s.step} →`;
+        if (s.cancelling) { btn.textContent = "Cancelling…"; btn.disabled = true; }
+        return;
+      }
       clearInterval(poll);
-      fetchStatus.textContent = s.failed ? "Fetch failed: see why →" : "Fetch finished: reload to see new postings";
+      fetchStatus.textContent = s.failed ? "Fetch failed: see why →"
+        : s.cancelled ? "Fetch cancelled: reload to see what it found" : "Fetch finished: reload to see new postings";
       fetchStatus.href = s.failed ? "/fetch" : location.href;
+      document.getElementById("fetch-form").action = "/fetch";
+      Object.assign(btn, { textContent: "Search", disabled: false, className: "primary" });
     } catch {}
   }, 3000);
 }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+import threading
 import time
 import unicodedata
 from dataclasses import dataclass, field
@@ -231,6 +232,21 @@ def iso_date(s: str | None) -> str | None:
     return s[:10] if s else None
 
 
+# ---------- cancelling a fetch ----------
+
+CANCEL = threading.Event()  # set when the running fetch should stop (one fetch per process at a time)
+
+
+class Cancelled(BaseException):
+    """Raised at the next checkpoint after a cancel. A BaseException so `except Exception` handlers in the
+    sources don't swallow it and carry on."""
+
+
+def check_cancel() -> None:
+    if CANCEL.is_set():
+        raise Cancelled
+
+
 # ---------- HTTP ----------
 
 
@@ -244,6 +260,7 @@ class Http:
 
     def get(self, url: str, *, retries: int = 2, **kw) -> httpx.Response | None:
         for attempt in range(retries + 1):
+            check_cancel()  # every source goes through here, so this is where a fetch stops
             try:
                 r = self.client.get(url, **kw)
             except httpx.HTTPError as e:
@@ -268,6 +285,7 @@ class Http:
             return None
 
     def post_json(self, url: str, payload: dict):
+        check_cancel()
         try:
             r = self.client.post(url, json=payload)
         except httpx.HTTPError:

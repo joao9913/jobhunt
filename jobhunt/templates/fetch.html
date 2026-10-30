@@ -19,7 +19,7 @@
 <div class="panel">
   <h2>What it's doing</h2>
   <div id="log" class="runlog"></div>
-  <p class="empty" id="log-empty" style="display:none">No log for this fetch yet. Press <b>Fetch now</b> to watch one live.</p>
+  <p class="empty" id="log-empty" style="display:none">No log for this fetch yet. Press <b>Search</b> to watch one live.</p>
 </div>
 
 <script>
@@ -27,7 +27,8 @@ const logEl = document.getElementById("log");
 const ago = (s) => { const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
 
 function render(run) {
-  const state = run.running ? "Running" : run.failed ? "Failed" : run.finished ? "Finished" : "";
+  const state = run.cancelling ? "Cancelling" : run.running ? "Running" : run.failed ? "Failed"
+    : run.cancelled ? "Cancelled" : run.finished ? "Finished" : "";
   document.getElementById("run-state").textContent = state;
   document.getElementById("run-state").className = "label " + (run.running ? "working" : run.failed ? "error" : "");
   document.getElementById("run-step").textContent = run.started ? run.step : "";

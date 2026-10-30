@@ -11,7 +11,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import db, inbox, llm
-from .core import Http, Job, company_key, load_profile, load_seed_companies, log
+from .core import CANCEL, Cancelled, Http, Job, check_cancel, company_key, load_profile, load_seed_companies, log
 from .scoring import Scorer, refresh_company_stats, rescore_all
 from .sources.ats import FETCHERS, resolve_ats
 from .sources.boards import BOARDS
@@ -144,6 +144,8 @@ def assess_new(conn: sqlite3.Connection, profile: dict) -> int:
     log.info("  %d postings to assess", len(todo))
 
     def one(job_id: int) -> bool:
+        if CANCEL.is_set():
+            return False
         c = db.connect()  # one connection per thread
         try:
             a = llm.assess_job(c, job_id)
@@ -159,7 +161,9 @@ def assess_new(conn: sqlite3.Connection, profile: dict) -> int:
             c.close()
 
     with ThreadPoolExecutor(3) as pool:
-        return sum(pool.map(one, [r["id"] for r in todo]))
+        n = sum(pool.map(one, [r["id"] for r in todo]))
+    check_cancel()  # assessments already running finish; the rest are skipped
+    return n
 
 
 class RunProgress(logging.Handler):
@@ -192,14 +196,22 @@ class RunProgress(logging.Handler):
         try:
             self.conn.execute("UPDATE runs SET progress = ? WHERE id = ?", (data, self.run_id))
             self.conn.commit()
-        except sqlite3.OperationalError:  # database busy: try again next tick
+        except sqlite3.OperationalError:  # database busy: try again next tick, in a fresh transaction
+            self.conn.rollback()
             self.dirty = True
 
     def _loop(self) -> None:
         while not self.done.wait(2):
             self._write()
+            try:  # a cancel can come from the dashboard while this fetch runs in a terminal
+                if self.conn.execute("SELECT cancel FROM runs WHERE id = ?", (self.run_id,)).fetchone()[0]:
+                    CANCEL.set()
+            except sqlite3.OperationalError:
+                pass
 
     def close(self) -> None:
+        if self.done.is_set():  # logging closes every handler again at exit
+            return
         self.done.set()
         self.writer.join()
         self.conn.execute("PRAGMA busy_timeout = 30000")
@@ -216,6 +228,16 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
     log.addHandler(progress)
     try:
         return _fetch(conn, run_id, sources, resolve_limit)
+    except Cancelled:
+        conn.rollback()
+        log.info("Cancelled. Scoring what was found so far...")
+        rescore_all(conn)
+        refresh_company_stats(conn, load_profile().get("min_score", 40))
+        summary = {"cancelled": True}
+        conn.execute("UPDATE runs SET finished = ?, summary = ? WHERE id = ?", (db.now(), json.dumps(summary), run_id))
+        conn.commit()
+        log.info("Cancelled: postings found before the cancel are saved")
+        return summary
     except Exception as e:
         log.error("Fetch failed: %s", e)
         raise

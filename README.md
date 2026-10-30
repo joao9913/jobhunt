@@ -10,7 +10,7 @@ Nothing is ever sent automatically, and nothing logs into LinkedIn.
 ```sh
 cd ~/dev/jobhunt
 uv run jobhunt fetch        # ~5–15 min: all sources, new companies, careers boards, scoring
-uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
+uv run jobhunt serve        # dashboard at http://127.0.0.1:5055 (its green Search button runs a fetch; Cancel stops it)
 ```
 
 In the dashboard:
