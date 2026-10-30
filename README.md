@@ -92,3 +92,9 @@ EU-remote. Add or remove companies for your own search.
 - `profile.yaml`: your profile. `data/cv.txt`: your CV as text. `data/jobhunt.db`: postings, statuses, notes,
   outreach (SQLite). All ignored by git.
 - Delete `data/jobhunt.db` to start over with postings; your profile stays.
+
+## Contributing
+
+Changes go through pull requests: fork the repo (or push a branch, if you have access), open a pull request
+against `main`, and it merges once the owner approves it. Keep personal data out of commits: `profile.yaml`
+and `data/` are ignored by git; don't force-add them.
