@@ -131,10 +131,10 @@ def create_app() -> Flask:
         c = conn()
         min_score = load_profile().get("min_score", 40)
         last_run = c.execute("SELECT * FROM runs WHERE finished IS NOT NULL ORDER BY id DESC LIMIT 1").fetchone()
-        jobs_ = inbox.new_jobs(c, 150)
+        jobs_ = inbox.new_jobs(c)
         level = request.args.get("level", "")
         shown = [j for j in jobs_ if _level_matches(j, level)]
-        companies_ = inbox.new_companies(c, 60)
+        companies_ = inbox.new_companies(c)
         followups = c.execute(
             """SELECT o.*, co.name AS company FROM outreach o LEFT JOIN companies co ON co.id = o.company_id
                WHERE o.followup_on <= date('now', 'localtime') AND COALESCE(o.outcome, '') = ''

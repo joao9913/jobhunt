@@ -5,7 +5,8 @@
 <div class="grid">
   <div class="panel"><div class="label">New postings</div><div class="stat">{{ jobs|length }}</div></div>
   <div class="panel"><div class="label">New companies</div><div class="stat">{{ companies|length }}</div></div>
-  <div class="panel"><div class="label">Interested / <a href="/applications">ongoing applications</a></div><div class="stat">{{ counts.get('interested', 0) }} / {{ ongoing }}</div></div>
+  <div class="panel"><div class="label"><a href="/jobs?status=interested">Interested</a></div><div class="stat">{{ counts.get('interested', 0) }}</div></div>
+  <div class="panel"><div class="label"><a href="/applications">Ongoing applications</a></div><div class="stat">{{ ongoing }}</div></div>
   <div class="panel"><div class="label">Messages sent this week</div><div class="stat">{{ sent }}</div></div>
 </div>
 

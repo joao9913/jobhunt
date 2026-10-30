@@ -39,21 +39,21 @@ def _excluded() -> set[str]:
     return {s.lower() for s in load_profile().get("exclude_companies", [])}
 
 
-def new_jobs(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+def new_jobs(conn: sqlite3.Connection, limit: int = -1) -> list[sqlite3.Row]:
     excluded = _excluded()
     rows = conn.execute(NEW_JOBS + " LIMIT :limit",
                         {"min": load_profile().get("min_score", 40), "limit": limit}).fetchall()
     return [r for r in rows if r["company"].lower() not in excluded]
 
 
-def new_companies(conn: sqlite3.Connection, limit: int = 200) -> list[sqlite3.Row]:
+def new_companies(conn: sqlite3.Connection, limit: int = -1) -> list[sqlite3.Row]:
     excluded = _excluded()
     rows = conn.execute(NEW_COMPANIES + " LIMIT ?", (limit,)).fetchall()
     return [r for r in rows if r["name"].lower() not in excluded]
 
 
 def counts(conn: sqlite3.Connection) -> tuple[int, int]:
-    return len(new_jobs(conn, 10_000)), len(new_companies(conn, 10_000))
+    return len(new_jobs(conn)), len(new_companies(conn))
 
 
 def mark_jobs_seen(conn: sqlite3.Connection, job_ids: list[int]) -> None:
