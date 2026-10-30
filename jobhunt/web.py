@@ -120,6 +120,11 @@ def create_app() -> Flask:
             resp.headers["Cache-Control"] = "no-store"
         return resp
 
+    @app.get("/favicon.svg")
+    @app.get("/favicon.ico")  # browsers ask for this one on their own
+    def favicon():
+        return app.send_static_file("favicon.svg")
+
     @app.get("/")
     def home():
         return redirect(url_for("today"))
