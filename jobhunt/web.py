@@ -113,6 +113,7 @@ def _page_url(pg: Page, page: int) -> str:
 
 def create_app() -> Flask:
     app = Flask(__name__)
+    app.config["TEMPLATES_AUTO_RELOAD"] = True  # template edits show on reload, no restart (set before jinja_env exists)
     app.jinja_env.filters["loads"] = _loads
     app.jinja_env.filters["q"] = quote_plus
 

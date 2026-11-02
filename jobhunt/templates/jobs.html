@@ -62,6 +62,12 @@
     <td class="meta" style="max-width:320px">{{ (j.reasons|loads([]))[:3]|join(' · ') }}</td>
     <td class="end">
       <span class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %} · {{ (j.posted_at or j.first_seen)[:10] }}</span><br>
+      {% if j.status != 'ignored' %}
+      <form class="inline" method="post" action="/jobs/{{ j.id }}/status">
+        <input type="hidden" name="status" value="ignored">
+        <button class="dismiss" title="Mark as not interested">Not interested</button>
+      </form>
+      {% endif %}
       {{ job_status(j) }}
     </td>
   </tr>

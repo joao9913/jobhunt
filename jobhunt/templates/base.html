@@ -137,6 +137,8 @@ button:hover, .btn:hover { background: var(--well); color: var(--ink); }
 button:active:not(:disabled), .btn:active { transform: scale(.97); }
 button.primary, .btn.primary { background: var(--pen); color: var(--pen-ink); box-shadow: none; font-weight: 600; }
 button.primary:hover, .btn.primary:hover { background: color-mix(in srgb, var(--pen) 88%, var(--ink)); color: var(--pen-ink); }
+button.dismiss { color: var(--ink-2); }
+button.dismiss:hover { color: var(--no); }
 button:disabled { opacity: .5; cursor: default; }
 button[data-busy]:disabled { cursor: progress; }
 select, input, textarea { font: 13px/1.4 var(--sans); padding: 0 10px; height: 32px; border-radius: 6px; border: 1px solid var(--rule);
