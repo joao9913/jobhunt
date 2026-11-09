@@ -5,8 +5,10 @@ No login and no account involved, so nothing can get your profile restricted. Re
 minutes, so on a 429 we wait (15 s, doubling up to 5 min) and retry the same request. We only give up
 for this run after ~30 minutes of 429s in a row.
 
-Each run searches back to the last run that finished every search (up to 30 days), so a run that was
-cut short, or a few days without fetching, doesn't leave a gap.
+Each run searches back to when the last complete run (one that finished every search) started, plus
+an hour of overlap, and at most 30 days. Fetch daily and it only asks for the last ~day; a run that was
+cut short, or a few days without fetching, doesn't leave a gap. Postings already known are never
+fetched again, so the overlap only costs a page or two of search results.
 """
 
 from __future__ import annotations
@@ -27,6 +29,7 @@ DETAIL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
 
 STATE = DATA / "linkedin_state.json"  # when the last complete LinkedIn search finished
 MAX_WINDOW = 30 * 86400                # LinkedIn's "posted in the last N seconds" filter, at most 30 days
+OVERLAP = 3600                         # LinkedIn can list a posting a little after its posted time
 BACKOFF = [15, 30, 60, 120, 240, 300, 300, 300, 300, 300]  # waits after consecutive 429s (~33 min total)
 
 
@@ -67,16 +70,17 @@ def _get(http: Http, url: str, **params) -> str | None:
 
 
 def _window() -> int:
-    """Seconds to look back: since the last complete run plus a day of overlap, 30 days at most."""
+    """Seconds to look back: since the last complete run started, plus OVERLAP, 30 days at most."""
     try:
         last = json.loads(STATE.read_text())["last_complete"]
     except (OSError, ValueError, KeyError, TypeError):
         return MAX_WINDOW
-    return int(min(MAX_WINDOW, max(86400, time.time() - last + 86400)))
+    return int(min(MAX_WINDOW, max(OVERLAP, time.time() - last + OVERLAP)))
 
 
-def _mark_complete() -> None:
-    STATE.write_text(json.dumps({"last_complete": time.time()}))
+def _mark_complete(started: float) -> None:
+    """Record when this run *started*: postings published while it ran are picked up next time."""
+    STATE.write_text(json.dumps({"last_complete": started}))
 
 
 def _cards(page: str) -> list[dict]:
@@ -141,9 +145,11 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
     cfg = profile.get("linkedin") or {}
     if not cfg.get("enabled"):
         return
+    started = time.time()
     seconds = MAX_WINDOW if first_run else _window()
     window = f"r{seconds}"
-    log.info("  linkedin: postings from the last %.1f days", seconds / 86400)
+    log.info("  linkedin: postings from the last %s", f"{seconds / 86400:.1f} days" if seconds >= 2 * 86400
+             else f"{seconds / 3600:.0f} hours")
     detail_budget = cfg.get("max_detail_fetches")  # None = no limit
     seen: set[str] = set()
     try:
@@ -177,7 +183,7 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                         description=(desc + ("\n\n" + "\n".join(criteria) if criteria else "")).strip(),
                         tags=criteria, posted_at=c["posted"],
                     )
-        _mark_complete()
+        _mark_complete(started)
     except RateLimited:
         log.warning("LinkedIn kept rate-limiting us for ~30 minutes; stopping LinkedIn for this run (results so far "
                     "are kept, and the next run searches back to the last complete one).")

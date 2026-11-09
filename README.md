@@ -79,7 +79,7 @@ Run them as `uv run jobhunt ...`.
 | Source | Notes |
 |---|---|
 | Company careers boards | Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Personio public APIs, for the companies in `companies.yaml` and ones discovered from postings. |
-| LinkedIn | Public logged-out job pages, one request every 3–6 s. When LinkedIn rate-limits (it does now and then), it waits and retries instead of giving up, so a LinkedIn search can take an hour. Each run searches back to the last complete one (up to 30 days), so missed days leave no gap. Each search also re-checks postings on your lists and marks the ones that stopped taking applications as **closed by employer**. |
+| LinkedIn | Public logged-out job pages, one request every 3–6 s. When LinkedIn rate-limits (it does now and then), it waits and retries instead of giving up, so a LinkedIn search can take an hour. Each run searches back to when the last complete one started, plus an hour (up to 30 days): fetch daily and it only asks for the last ~day; missed days leave no gap. Each search also re-checks postings on your lists and marks the ones that stopped taking applications as **closed by employer**. |
 | Wellfound, YC jobs | Startup jobs with company size and funding stage. |
 | Landing.jobs | Portugal tech board. |
 | Himalayas, Remotive, RemoteOK, Arbeitnow | Remote and EU boards. |
