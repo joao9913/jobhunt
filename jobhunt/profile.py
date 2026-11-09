@@ -105,18 +105,24 @@ DEFAULTS: dict = {
     "remote_reject": ["us", "usa", "us only", "usa only", "united states", "us-based", "u.s.", "north america",
                       "canada", "latam", "latin america", "americas", "apac", "asia", "india", "australia", "brazil",
                       "est", "pst", "us timezones"],
-    "linkedin": {"enabled": True, "max_detail_fetches": 150, "max_closed_checks": 60},
+    "linkedin": {"enabled": True, "max_detail_fetches": None, "max_closed_checks": 60},
     "wellfound": {"enabled": True, "max_pages": 4},
     "yc_jobs": {"enabled": True, "pages": ["jobs/role/software-engineer/remote", "jobs/role/software-engineer"]},
     "remotive_category": "software-dev",
     "hn_whos_hiring": True,
     "llm_model": "sonnet",
     "auto_assess": 40,
+    "seniority": "any",  # any | no-senior (drop senior postings) | junior-mid (only postings that say junior-mid)
 }
+
+SENIORITY_CHOICES = {"any": "Any level",
+                     "no-senior": "Hide senior postings",
+                     "junior-mid": "Only postings that say junior–mid (also hides the ones that don't say)"}
 
 # The fields the Profile page edits; everything else in profile.yaml is kept as it is when saving.
 EDITABLE = ["name", "email", "linkedin_url", "github_url", "story", "experience_years", "experience_note", "roles", "skills",
-            "must_have", "avoid", "languages", "search_terms", "location", "exclude_companies", "min_score"]
+            "must_have", "avoid", "languages", "search_terms", "location", "exclude_companies", "min_score",
+            "seniority"]
 
 
 def read() -> dict:

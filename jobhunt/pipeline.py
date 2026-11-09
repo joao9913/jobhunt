@@ -284,7 +284,7 @@ def _fetch(conn: sqlite3.Connection, run_id: int, sources: set[str] | None, reso
                WHERE source = 'linkedin' AND length(COALESCE(description, '')) < 200
                  AND last_seen >= date('now', '-14 day') AND seen = 0 AND status = 'new'
                ORDER BY last_seen DESC""").fetchall() if wants_detail(dict(r))]
-        budget = (profile.get("linkedin") or {}).get("max_detail_fetches", 80)
+        budget = (profile.get("linkedin") or {}).get("max_detail_fetches")
         if missing:
             filled = 0
             for ext_id, desc in backfill(http, [r["ext_id"] for r in missing], budget):

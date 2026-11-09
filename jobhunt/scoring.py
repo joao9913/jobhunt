@@ -9,7 +9,7 @@ import sqlite3
 from .core import REMOTE_NO_COUNTRY, UNKNOWN_COUNTRY, ascii_lower, countries, has_term, load_profile
 
 ENG_TITLE = re.compile(
-    r"engineer|developer|programmer|software|backend|back-end|python|django|devops|\bsre\b|"
+    r"engineer|developer|programmer|software|backend|back-end|python|django|node(?:\.?js)?|typescript|devops|\bsre\b|"
     r"platform|full.?stack|data|integration|\bapi\b|technical lead|tech lead|desenvolvedor|programador|"
     r"engenheiro|entwickler",
     re.I,
@@ -54,7 +54,8 @@ _YEARS = re.compile(
     rf"(?<![\d.,])(?P<a>{_NUM})\s*(?P<ap>\+|plus|or more)?\s*(?:(?:-|–|to|a)\s*(?P<ar>{_NUM})\s*(?P<arp>\+)?\s*)?"
     r"(?:years?|yrs?|anos)\b(?P<aor>\s*or more)?(?:'|’)?"
     r"[^.\n;]{0,60}?(?:experience|experiência|exp\b|background|working|professional|hands-on|commercial|"
-    r"(?:software|backend|python) (?:development|engineering)|in (?:software|backend|python|a similar))|"
+    r"(?:software|backend|python|node(?:\.?js)?|typescript) (?:development|engineering)|"
+    r"in (?:software|backend|python|node(?:\.?js)?|typescript|a similar))|"
     rf"(?:experience|experiência)[^.\n;]{{0,40}}?(?P<bmin>at least|minimum(?: of)?|min\.?|over|more than)?\s*"
     rf"(?P<b>{_NUM})\s*(?P<bp>\+)?\s*(?:(?:-|–|to)\s*(?P<br>{_NUM})\s*)?(?:years?|yrs?|anos)", re.I)
 _AT_LEAST = re.compile(r"(at least|minimum(?: of)?|min\.?|over|more than|no less than|pelo menos|m[ií]nimo de)\s*$", re.I)
@@ -166,6 +167,7 @@ class Scorer:
         self.must_have = [s.lower() for s in p.get("must_have") or []]
         self.excluded_companies = {s.lower() for s in p.get("exclude_companies", [])}
         self.my_years = p.get("experience_years", 1)
+        self.level_wanted = p.get("seniority") or "any"
 
     # Returns (score, reasons, rejected_reason). A rejected job gets score 0.
     def score(self, job: sqlite3.Row | dict) -> tuple[int, list[str], str | None]:
@@ -184,6 +186,13 @@ class Scorer:
                 return 0, [], f"title: {rx.pattern}"
         if not any(has_term(title, w) for w in self.include):
             return 0, [], "title not a backend/dev role"
+        if self.level_wanted != "any":
+            level, why = seniority(job["title"] or "", job["description"] or "")
+            if level == "senior":
+                return 0, [], f"senior ({why})"
+            # Without a description we can't tell yet (e.g. a LinkedIn card before its page is read): keep it.
+            if self.level_wanted == "junior-mid" and level is None and len(desc) >= 200:
+                return 0, [], "level not stated"
 
         loc_ok, loc_pts, loc_reason, _ = self._location(job, title, location, desc)
         if not loc_ok:

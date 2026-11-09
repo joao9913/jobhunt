@@ -34,6 +34,7 @@ uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
 | Job types | Backend, frontend, full stack, mobile, data, DevOps, ML, QA, embedded, security. Titles of the types you don't tick are hidden. |
 | Searches | What's searched on LinkedIn and the job boards, one per line. |
 | Experience (years) | Count real jobs in the field. Postings asking for more years rank lower; senior titles rank lower when you have under 3. |
+| Seniority | Any level, hide senior postings, or only postings that say junior–mid (that one also hides postings that don't state a level). Uses the level badge: title words first (senior, lead, staff…), then the years of experience it asks for. |
 | Skills and points | A posting gets the points for each skill it mentions. |
 | Must mention one of | Postings that mention none of these (e.g. your main language) lose points. |
 | Hide titles with | Tech you don't want, e.g. `java, php`. |
@@ -42,7 +43,7 @@ uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
 | Story | A few sentences in your own words. Claude's drafts never claim anything that isn't in your story or CV. |
 
 Saving re-ranks every posting. You can also edit `profile.yaml` directly and run `uv run jobhunt score`.
-Advanced settings in `profile.yaml` (all optional): `linkedin.max_detail_fetches`, `linkedin.searches` (to
+Advanced settings in `profile.yaml` (all optional): `linkedin.max_detail_fetches` (no limit by default), `linkedin.searches` (to
 set exact searches and locations), `wellfound.pages`, `auto_assess`, `llm_model`, `outreach_rules`, `red_flags`.
 
 ## Daily use
@@ -78,7 +79,7 @@ Run them as `uv run jobhunt ...`.
 | Source | Notes |
 |---|---|
 | Company careers boards | Greenhouse, Lever, Ashby, SmartRecruiters, Workable, Recruitee, Personio public APIs, for the companies in `companies.yaml` and ones discovered from postings. |
-| LinkedIn | Public logged-out job pages, throttled and capped. Each search also re-checks postings on your lists and marks the ones that stopped taking applications as **closed by employer**. |
+| LinkedIn | Public logged-out job pages, one request every 3–6 s. When LinkedIn rate-limits (it does now and then), it waits and retries instead of giving up, so a LinkedIn search can take an hour. Each run searches back to the last complete one (up to 30 days), so missed days leave no gap. Each search also re-checks postings on your lists and marks the ones that stopped taking applications as **closed by employer**. |
 | Wellfound, YC jobs | Startup jobs with company size and funding stage. |
 | Landing.jobs | Portugal tech board. |
 | Himalayas, Remotive, RemoteOK, Arbeitnow | Remote and EU boards. |

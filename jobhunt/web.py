@@ -167,6 +167,7 @@ def create_app() -> Flask:
             values["location"] = {**values["location"], **suggested.get("location", {})}
         cv = core.cv_text()
         return render_template("profile.html", p=values, suggested=suggested, roles=profile.ROLES,
+                               seniority_choices=profile.SENIORITY_CHOICES,
                                countries=sorted(core._COUNTRIES), cv_chars=len(cv),
                                cv_name=next((f.name for f in sorted(core.DATA.glob("cv_upload.*"))), None),
                                saved=request.args.get("saved"), error=request.args.get("error"))
@@ -188,6 +189,7 @@ def create_app() -> Flask:
                          "onsite_elsewhere": [x.lower() for x in _split(f.get("onsite_elsewhere", ""))]},
             "exclude_companies": [x.lower() for x in _split(f.get("exclude_companies", ""))],
             "min_score": f.get("min_score", 40, type=int),
+            "seniority": f.get("seniority") if f.get("seniority") in profile.SENIORITY_CHOICES else "any",
         })
         profile.discard_draft()
         _run("rescore", _rescore_task)  # every posting is ranked again against the new profile

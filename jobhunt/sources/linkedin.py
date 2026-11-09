@@ -1,11 +1,17 @@
 """LinkedIn's public (logged-out) job search pages.
 
 No login and no account involved, so nothing can get your profile restricted. Requests are spaced out
-and capped; if LinkedIn answers 429 we stop for this run.
+(3–6 s). LinkedIn answers 429 now and then even at that pace, and the block clears within seconds to
+minutes, so on a 429 we wait (15 s, doubling up to 5 min) and retry the same request. We only give up
+for this run after ~30 minutes of 429s in a row.
+
+Each run searches back to the last run that finished every search (up to 30 days), so a run that was
+cut short, or a few days without fetching, doesn't leave a gap.
 """
 
 from __future__ import annotations
 
+import json
 import random
 import re
 import time
@@ -13,27 +19,64 @@ from collections.abc import Iterator
 
 from bs4 import BeautifulSoup
 
-from ..core import Http, Job, html_to_text, log
+from ..core import CANCEL, DATA, Http, Job, check_cancel, html_to_text, log
 
 SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 DETAIL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
+
+
+STATE = DATA / "linkedin_state.json"  # when the last complete LinkedIn search finished
+MAX_WINDOW = 30 * 86400                # LinkedIn's "posted in the last N seconds" filter, at most 30 days
+BACKOFF = [15, 30, 60, 120, 240, 300, 300, 300, 300, 300]  # waits after consecutive 429s (~33 min total)
 
 
 class RateLimited(Exception):
     pass
 
 
+def _sleep(seconds: float) -> None:
+    """Sleep, but wake up at once if the fetch is cancelled."""
+    CANCEL.wait(seconds)
+    check_cancel()
+
+
 def _pause() -> None:
-    time.sleep(random.uniform(1.5, 3.5))
+    _sleep(random.uniform(3.0, 6.0))
+
+
+def _request(http: Http, url: str, **params):
+    """GET with patient 429 handling. Raises RateLimited only after the whole BACKOFF schedule."""
+    for wait in [*BACKOFF, None]:
+        r = http.get(url, params=params or None, retries=0)
+        if r is None or r.status_code != 429:
+            return r
+        if wait is None:
+            raise RateLimited
+        retry_after = r.headers.get("Retry-After", "")
+        wait = max(wait, int(retry_after)) if retry_after.isdigit() else wait
+        log.info("  linkedin: rate-limited, waiting %d s and trying again", wait)
+        _sleep(wait + random.uniform(0, 5))
+    raise RateLimited  # not reached
 
 
 def _get(http: Http, url: str, **params) -> str | None:
-    r = http.get(url, params=params, retries=0)
+    r = _request(http, url, **params)
     if r is None:
         return None
-    if r.status_code == 429:
-        raise RateLimited
     return r.text if r.status_code == 200 else None
+
+
+def _window() -> int:
+    """Seconds to look back: since the last complete run plus a day of overlap, 30 days at most."""
+    try:
+        last = json.loads(STATE.read_text())["last_complete"]
+    except (OSError, ValueError, KeyError, TypeError):
+        return MAX_WINDOW
+    return int(min(MAX_WINDOW, max(86400, time.time() - last + 86400)))
+
+
+def _mark_complete() -> None:
+    STATE.write_text(json.dumps({"last_complete": time.time()}))
 
 
 def _cards(page: str) -> list[dict]:
@@ -74,11 +117,9 @@ def _detail(http: Http, job_id: str) -> tuple[str, list[str]]:
 
 def is_closed(http: Http, job_id: str) -> bool | None:
     """True when the posting no longer takes applications (or was taken down), None if we couldn't tell."""
-    r = http.get(DETAIL.format(id=job_id), retries=0)
+    r = _request(http, DETAIL.format(id=job_id))
     if r is None:
         return None
-    if r.status_code == 429:
-        raise RateLimited
     if r.status_code in (404, 410):
         return True
     if r.status_code != 200:
@@ -100,14 +141,16 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
     cfg = profile.get("linkedin") or {}
     if not cfg.get("enabled"):
         return
-    window = "r604800" if first_run else "r172800"  # past week on first run, then past 2 days
-    detail_budget = cfg.get("max_detail_fetches", 80)
+    seconds = MAX_WINDOW if first_run else _window()
+    window = f"r{seconds}"
+    log.info("  linkedin: postings from the last %.1f days", seconds / 86400)
+    detail_budget = cfg.get("max_detail_fetches")  # None = no limit
     seen: set[str] = set()
     try:
         for search in cfg.get("searches", []):
             log.info("  linkedin: searching \"%s\" in %s%s", search["keywords"], search["location"],
                      " (remote)" if search.get("remote") else "")
-            for start in range(0, 200, 10):
+            for start in range(0, 1000, 10):  # the public search stops serving results at ~1000
                 params = {"keywords": search["keywords"], "location": search["location"], "f_TPR": window,
                           "start": start}
                 if search.get("remote"):
@@ -122,9 +165,10 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                         continue
                     seen.add(c["id"])
                     desc, criteria = "", []
-                    if c["id"] not in known and detail_budget > 0 and wants_detail({**c, "remote": search.get("remote")}):
+                    if c["id"] not in known and (detail_budget is None or detail_budget > 0) and wants_detail({**c, "remote": search.get("remote")}):
                         desc, criteria = _detail(http, c["id"])
-                        detail_budget -= 1
+                        if detail_budget is not None:
+                            detail_budget -= 1
                         _pause()
                     yield Job(
                         source="linkedin", ext_id=c["id"], company=c["company"], title=c["title"],
@@ -133,8 +177,10 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                         description=(desc + ("\n\n" + "\n".join(criteria) if criteria else "")).strip(),
                         tags=criteria, posted_at=c["posted"],
                     )
+        _mark_complete()
     except RateLimited:
-        log.warning("LinkedIn rate-limited us; stopping LinkedIn for this run (results so far are kept).")
+        log.warning("LinkedIn kept rate-limiting us for ~30 minutes; stopping LinkedIn for this run (results so far "
+                    "are kept, and the next run searches back to the last complete one).")
 
 
 def backfill(http: Http, job_ids: list[str], budget: int) -> Iterator[tuple[str, str]]:
