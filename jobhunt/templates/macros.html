@@ -23,6 +23,9 @@
     {% endfor %}
   </select>
 </form>
+{% if applied_here is defined and j.status in TRIAGE_STATUSES %}{% set prev = applied_here(j) %}{% if prev %}
+<span class="pill check" title="{% for p in prev %}{{ p.applied_on }} · {{ p.title }} · {{ STATUS_LABELS.get(p.status, p.status) }}&#10;{% endfor %}">applied here ×{{ prev|length }}</span>
+{% endif %}{% endif %}
 {% endmacro %}
 
 {% macro pager(pg) %}

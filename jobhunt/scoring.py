@@ -144,6 +144,11 @@ def is_engineering_title(title: str) -> bool:
     return bool(ENG_TITLE.search(title))
 
 
+# Regions named in a title mean the role is only open there.
+TITLE_REGIONS = ["apac", "latam", "latin america", "north america", "americas", "us only", "usa only", "united states",
+                 "india", "australia", "brazil", "canada", "asia"]
+
+
 class Scorer:
     def __init__(self, profile: dict | None = None) -> None:
         p = profile or load_profile()
@@ -186,6 +191,9 @@ class Scorer:
                 return 0, [], f"title: {rx.pattern}"
         if not any(has_term(title, w) for w in self.include):
             return 0, [], "title not a backend/dev role"
+        region = next((w for w in TITLE_REGIONS if has_term(title, w)), None)
+        if region:  # e.g. "Full Stack Engineer (APAC Remote)": the location field often doesn't say
+            return 0, [], f"title: {region} only"
         if self.level_wanted != "any":
             level, why = seniority(job["title"] or "", job["description"] or "")
             if level == "senior":
@@ -315,6 +323,18 @@ def _residency_elsewhere(desc: str, country: str) -> bool:
     return bool(m) and not (country and country.lower() in desc[m.start():m.end() + 80])
 
 
+# ---------- stack ----------
+_PY = ["python", "django", "fastapi", "flask"]
+_NODE = ["typescript", "node", "nodejs", "nestjs", "express.js", "expressjs"]
+
+
+def stack(title: str, desc: str) -> str | None:
+    """Which of your two stacks a posting is for: "python", "node", "both", or None (neither mentioned)."""
+    text = f"{title} {desc}".lower()
+    py, node = any(has_term(text, w) for w in _PY), any(has_term(text, w) for w in _NODE)
+    return "both" if py and node else "python" if py else "node" if node else None
+
+
 def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:
     scorer = scorer or Scorer()
     rows = conn.execute("SELECT id, company, title, description, location, remote FROM jobs").fetchall()
@@ -322,10 +342,10 @@ def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:
         s, reasons, rejected = scorer.score(r)
         level, level_why = seniority(r["title"], r["description"])
         conn.execute(
-            """UPDATE jobs SET score = ?, reasons = ?, rejected = ?, remote_check = ?, seniority = ?, seniority_why = ?
-               WHERE id = ?""",
+            """UPDATE jobs SET score = ?, reasons = ?, rejected = ?, remote_check = ?, seniority = ?, seniority_why = ?,
+                   stack = ? WHERE id = ?""",
             (s, json.dumps(reasons), rejected, int(rejected is None and scorer.remote_check(r)), level, level_why,
-             r["id"]),
+             stack(r["title"] or "", r["description"] or ""), r["id"]),
         )
     conn.commit()
     return len(rows)

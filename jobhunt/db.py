@@ -123,10 +123,48 @@ def _migrate(conn: sqlite3.Connection) -> None:
     have = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
     for col, decl in [("seen", "INTEGER NOT NULL DEFAULT 0"), ("applied_on", "TEXT"), ("closed_on", "TEXT"),
                       ("checked_on", "TEXT"), ("remote_check", "INTEGER NOT NULL DEFAULT 0"),
-                      ("seniority", "TEXT"), ("seniority_why", "TEXT")]:  # junior-mid | senior | NULL (not stated)  # checked_on: last time we checked it still takes applications
+                      ("seniority", "TEXT"), ("seniority_why", "TEXT"),
+                      ("stack", "TEXT")]:  # python | node | both | NULL, see scoring.stack  # junior-mid | senior | NULL (not stated)  # checked_on: last time we checked it still takes applications
         if col not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
     conn.commit()
+
+
+def expire_applications(conn: sqlite3.Connection, days: int) -> int:
+    """Applications with no answer after `days` days become "no reply" (closed today). Returns how many."""
+    if not days:
+        return 0
+    cur = conn.execute(
+        """UPDATE jobs SET status = 'no reply', closed_on = COALESCE(closed_on, ?)
+           WHERE status = 'applied' AND applied_on IS NOT NULL AND applied_on <= date(?, ?)""",
+        (today(), today(), f"-{int(days)} day"))
+    conn.commit()
+    return cur.rowcount
+
+
+def applications_by_stack(conn: sqlite3.Connection) -> list[dict]:
+    """Applications per stack and outcome, one row per stack (each posting counted once)."""
+    rows = conn.execute(
+        """SELECT COALESCE(stack, 'other') AS stack, status, COUNT(DISTINCT dedup_key) AS n FROM jobs
+           WHERE applied_on IS NOT NULL GROUP BY 1, 2""").fetchall()
+    out: dict[str, dict] = {}
+    for r in rows:
+        d = out.setdefault(r["stack"], {"stack": r["stack"], "total": 0, "waiting": 0, "interview": 0,
+                                        "rejected": 0, "no reply": 0, "other": 0})
+        d["total"] += r["n"]
+        key = ("waiting" if r["status"] == "applied" else "interview" if r["status"] in ("interviewing", "offer", "accepted", "declined")
+               else r["status"] if r["status"] in ("rejected", "no reply") else "other")
+        d[key] += r["n"]
+    order = ["python", "node", "both", "other"]
+    return sorted(out.values(), key=lambda d: order.index(d["stack"]) if d["stack"] in order else 9)
+
+
+def applied_at_company(conn: sqlite3.Connection, company_key: str, dedup_key: str) -> list[sqlite3.Row]:
+    """Your other applications at this company (not this posting), newest first."""
+    return conn.execute(
+        """SELECT title, status, MAX(applied_on) AS applied_on FROM jobs
+           WHERE company_key = ? AND dedup_key != ? AND applied_on IS NOT NULL
+           GROUP BY dedup_key ORDER BY applied_on DESC""", (company_key, dedup_key)).fetchall()
 
 
 def set_job_status(conn: sqlite3.Connection, job_id: int, status: str) -> None:

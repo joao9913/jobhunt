@@ -112,6 +112,7 @@ DEFAULTS: dict = {
     "hn_whos_hiring": True,
     "llm_model": "sonnet",
     "auto_assess": 40,
+    "no_reply_after_days": 28,  # an application with no answer after this many days becomes "no reply"
     "seniority": "any",  # any | no-senior (drop senior postings) | junior-mid (only postings that say junior-mid)
 }
 

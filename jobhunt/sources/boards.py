@@ -128,6 +128,8 @@ def hn_whos_hiring(http: Http, profile: dict) -> Iterator[Job]:
     for c in (item or {}).get("children", []):
         text = html_to_text(c.get("text") or "")
         low = text.lower()
+        if low.startswith("location:") or "willing to relocate:" in low or "résumé/cv:" in low or "resume/cv:" in low:
+            continue  # someone looking for work (the "Who wants to be hired?" template), not a job
         if focus and not any(w in low for w in focus):
             continue
         if not where.search(low):

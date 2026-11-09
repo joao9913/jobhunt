@@ -34,9 +34,14 @@
     <h2>New postings</h2>
     <div class="row">
       <form method="get" class="inline">
-        {% for k, v in request.args.items() if k not in ('level', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        {% for k, v in request.args.items() if k not in ('level', 'sort', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
         {{ level_select(level, per_level) }}
-        {% if level %}<a href="?all" class="meta">clear</a>{% endif %}
+        {% if sorts is defined %}
+        <select name="sort" class="autosubmit">
+          {% for value, label in sorts.items() %}<option value="{{ value }}" {{ 'selected' if sort == value }}>{{ label }}</option>{% endfor %}
+        </select>
+        {% endif %}
+        {% if level or (sort is defined and sort != 'score') %}<a href="?all" class="meta">clear</a>{% endif %}
       </form>
       {% if shown %}
       <form method="post" action="/inbox/seen">

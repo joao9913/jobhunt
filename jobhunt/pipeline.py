@@ -180,6 +180,8 @@ class RunProgress(logging.Handler):
         self.writer.start()
 
     def emit(self, record: logging.LogRecord) -> None:
+        if record.name.startswith("jobhunt.web"):  # dashboard page errors aren't part of the fetch
+            return
         msg = record.getMessage()
         with self.state_lock:
             if not msg.startswith(" "):  # top-level lines name the step; indented ones are its details
@@ -305,6 +307,10 @@ def _fetch(conn: sqlite3.Connection, run_id: int, sources: set[str] | None, reso
     conn.commit()
     log.info("Scoring postings...")
     rescore_all(conn, scorer)
+    expired = db.expire_applications(conn, profile.get("no_reply_after_days", 28))
+    if expired:
+        log.info("  %d applications with no answer after %d days marked \"no reply\"", expired,
+                 profile.get("no_reply_after_days", 28))
     refresh_company_stats(conn, profile.get("min_score", 40))
 
     if want("resolve"):

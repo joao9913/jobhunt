@@ -93,6 +93,8 @@ class Page:
         self.items = items[self.first:self.first + per_page]
 
 
+INBOX_SORTS = {"score": "best score first", "newest": "newest first", "remote": "clear about remote first"}
+
 def _level_matches(job, level: str) -> bool:
     """The seniority filter: "" any, "junior-mid", "senior", or "none" (posting doesn't say)."""
     return not level or (job["seniority"] or "none") == level
@@ -127,7 +129,16 @@ def create_app() -> Flask:
                 "fetch_cancelling": state["cancelling"],
                 "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
-                "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url}
+                "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url,
+                "applied_here": applied_here}
+
+    def applied_here(j) -> list:
+        """Your other applications at this posting's company (cached for the request)."""
+        cache = g.setdefault("applied_here", {})
+        key = (j["company_key"], j["dedup_key"])
+        if key not in cache:
+            cache[key] = db.applied_at_company(conn(), *key)
+        return cache[key]
 
     def conn():
         if "db" not in g:
@@ -235,6 +246,15 @@ def create_app() -> Flask:
         jobs_ = inbox.new_jobs(c)
         level = request.args.get("level", "")
         shown = [j for j in jobs_ if _level_matches(j, level)]
+        sort = request.args.get("sort", "score")
+        if sort not in INBOX_SORTS:
+            sort = "score"
+        if sort == "score":
+            shown.sort(key=lambda j: j["first_seen"] or "", reverse=True)  # ties: newest first
+            shown.sort(key=lambda j: j["score"] or 0, reverse=True)
+        elif sort == "newest":
+            shown.sort(key=lambda j: (j["posted_at"] or j["first_seen"] or "")[:10], reverse=True)
+        # "remote": the inbox's own order (clear about remote first, then score)
         companies_ = inbox.new_companies(c)
         followups = c.execute(
             """SELECT o.*, co.name AS company FROM outreach o LEFT JOIN companies co ON co.id = o.company_id
@@ -250,6 +270,7 @@ def create_app() -> Flask:
         kinds = {r["key"]: r for r in c.execute("SELECT key, id, kind, startup, stage FROM companies")}
         return render_template("today.html", jobs=jobs_, companies=companies_, followups=followups,
                                pg=Page(shown, 10), shown=shown, level=level, per_level=_level_counts(jobs_),
+                               sort=sort, sorts=INBOX_SORTS,
                                cpg=Page(companies_, 10, "cpage"),
                                tpg=Page(targets, 10, "tpage"),
                                targets=targets, counts=counts, sent=sent, last_run=last_run, kinds=kinds,
@@ -390,6 +411,7 @@ def create_app() -> Flask:
     @app.get("/applications")
     def applications():
         c = conn()
+        db.expire_applications(c, load_profile().get("no_reply_after_days", 28))
         tab = "archive" if request.args.get("tab") == "archive" else "ongoing"
         statuses = db.CLOSED_STATUSES if tab == "archive" else db.ACTIVE_STATUSES
         order = "closed_on DESC" if tab == "archive" else "applied_on DESC"
@@ -405,6 +427,7 @@ def create_app() -> Flask:
         n = {s: k for s, k in c.execute(
             f"SELECT status, COUNT(DISTINCT dedup_key) FROM jobs WHERE {match} GROUP BY status", mparams)}
         return render_template("applications.html", pg=Page(rows, 20), tab=tab, q=q, today=db.today(),
+                               stats=db.applications_by_stack(c), no_reply_days=load_profile().get("no_reply_after_days", 28),
                                n_ongoing=sum(n.get(s, 0) for s in db.ACTIVE_STATUSES),
                                n_archive=sum(n.get(s, 0) for s in db.CLOSED_STATUSES))
 

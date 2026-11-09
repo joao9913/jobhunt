@@ -44,7 +44,7 @@ uv run jobhunt serve        # dashboard at http://127.0.0.1:5055
 
 Saving re-ranks every posting. You can also edit `profile.yaml` directly and run `uv run jobhunt score`.
 Advanced settings in `profile.yaml` (all optional): `linkedin.max_detail_fetches` (no limit by default), `linkedin.searches` (to
-set exact searches and locations), `wellfound.pages`, `auto_assess`, `llm_model`, `outreach_rules`, `red_flags`.
+set exact searches and locations), `wellfound.pages`, `no_reply_after_days` (default 28: an application with no answer by then becomes "no reply"), `auto_assess`, `llm_model`, `outreach_rules`, `red_flags`.
 
 ## Daily use
 

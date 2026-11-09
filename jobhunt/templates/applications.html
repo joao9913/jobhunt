@@ -13,6 +13,23 @@
   {% if q %}<a class="btn" href="?tab={{ tab }}">Clear</a>{% endif %}
 </form>
 
+{% if stats is defined and stats %}
+<div class="panel">
+  <h2>By stack <span class="meta">· every application so far, each posting once; "no reply" after {{ no_reply_days }} days without an answer</span></h2>
+  <table>
+    <tr><th>Stack</th><th>Applied</th><th>Waiting</th><th>Interview</th><th>Rejected</th><th>No reply</th><th>Reply rate</th></tr>
+    {% for s in stats %}
+    {% set answered = s.interview + s.rejected %}
+    <tr>
+      <td class="t">{{ {'python': 'Python', 'node': 'Node / TypeScript', 'both': 'Python + Node', 'other': 'neither mentioned'}[s.stack] }}</td>
+      <td>{{ s.total }}</td><td>{{ s.waiting }}</td><td>{{ s.interview }}</td><td>{{ s.rejected }}</td><td>{{ s['no reply'] }}</td>
+      <td class="meta">{{ (100 * answered / s.total)|round|int if s.total else 0 }}% answered · {{ (100 * s.interview / s.total)|round|int if s.total else 0 }}% interview</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+
 <div class="panel flush">
 {% if pg.items %}
 <table>
@@ -21,7 +38,7 @@
   <tr>
     <td class="t">
       <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
-      <div class="meta">{{ j.company }}</div>
+      <div class="meta">{{ j.company }}{% if j.stack %} <span class="pill">{{ {'python': 'python', 'node': 'node/ts', 'both': 'python+node'}[j.stack] }}</span>{% endif %}</div>
     </td>
     <td class="meta" style="max-width:180px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
     <td class="meta" style="white-space:nowrap">{{ j.applied_on or '—' }}</td>
