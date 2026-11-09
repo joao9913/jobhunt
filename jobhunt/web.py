@@ -393,13 +393,18 @@ def create_app() -> Flask:
         tab = "archive" if request.args.get("tab") == "archive" else "ongoing"
         statuses = db.CLOSED_STATUSES if tab == "archive" else db.ACTIVE_STATUSES
         order = "closed_on DESC" if tab == "archive" else "applied_on DESC"
+        q = request.args.get("q", "").strip()
+        # the search matches role, company, location and your notes; the tab counts follow it
+        match = "(title LIKE ? OR company LIKE ? OR location LIKE ? OR notes LIKE ?)" if q else "1"
+        mparams = [f"%{q}%"] * 4 if q else []
         rows = c.execute(
             f"""SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY dedup_key
                                    ORDER BY length(COALESCE(description,'')) DESC) rn FROM jobs
                                WHERE status IN ({', '.join('?' * len(statuses))}))
-                WHERE rn = 1 ORDER BY {order}, id DESC""", statuses).fetchall()
-        n = {s: k for s, k in c.execute("SELECT status, COUNT(DISTINCT dedup_key) FROM jobs GROUP BY status")}
-        return render_template("applications.html", pg=Page(rows, 20), tab=tab, today=db.today(),
+                WHERE rn = 1 AND {match} ORDER BY {order}, id DESC""", [*statuses, *mparams]).fetchall()
+        n = {s: k for s, k in c.execute(
+            f"SELECT status, COUNT(DISTINCT dedup_key) FROM jobs WHERE {match} GROUP BY status", mparams)}
+        return render_template("applications.html", pg=Page(rows, 20), tab=tab, q=q, today=db.today(),
                                n_ongoing=sum(n.get(s, 0) for s in db.ACTIVE_STATUSES),
                                n_archive=sum(n.get(s, 0) for s in db.CLOSED_STATUSES))
 

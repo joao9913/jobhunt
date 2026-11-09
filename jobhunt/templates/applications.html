@@ -2,12 +2,16 @@
 {% from "macros.html" import job_status, pager with context %}
 {% block title %}Applications · jobhunt{% endblock %}
 {% block body %}
-<div class="filters">
+<form class="filters" method="get">
   <span class="tabs">
-    <a href="?tab=ongoing" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
-    <a href="?tab=archive" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
+    <a href="?tab=ongoing&q={{ q|q }}" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
+    <a href="?tab=archive&q={{ q|q }}" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
   </span>
-</div>
+  <input type="hidden" name="tab" value="{{ tab }}">
+  <input type="search" name="q" value="{{ q }}" placeholder="search role, company, location, notes" autofocus>
+  <button>Search</button>
+  {% if q %}<a class="btn" href="?tab={{ tab }}">Clear</a>{% endif %}
+</form>
 
 <div class="panel flush">
 {% if pg.items %}
@@ -28,6 +32,8 @@
   {% endfor %}
 </table>
 {{ pager(pg) }}
+{% elif q %}<p class="empty">No {{ tab }} applications match “{{ q }}”.{% if (n_archive if tab == 'ongoing' else n_ongoing) %}
+  <a href="?tab={{ 'archive' if tab == 'ongoing' else 'ongoing' }}&q={{ q|q }}">See {{ n_archive if tab == 'ongoing' else n_ongoing }} in {{ 'archive' if tab == 'ongoing' else 'ongoing' }} →</a>{% endif %}</p>
 {% elif tab == 'archive' %}<p class="empty">Nothing archived yet.</p>
 {% else %}<p class="empty">No ongoing applications. Set a posting to "applied" on its page and it shows up here.</p>{% endif %}
 </div>
