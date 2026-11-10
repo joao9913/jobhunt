@@ -159,8 +159,8 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
             for start in range(0, 1000, 10):  # the public search stops serving results at ~1000
                 params = {"keywords": search["keywords"], "location": search["location"], "f_TPR": window,
                           "start": start}
-                if search.get("remote"):
-                    params["f_WT"] = "2"
+                if search.get("remote"):  # the public search ignores f_WT (tested 2026-11-10), so bias the keywords
+                    params["keywords"] = f'{search["keywords"]} remote'
                 page = _get(http, SEARCH, **params)
                 _pause()
                 cards = _cards(page or "")
@@ -171,7 +171,7 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                         continue
                     seen.add(c["id"])
                     desc, criteria = "", []
-                    if c["id"] not in known and (detail_budget is None or detail_budget > 0) and wants_detail({**c, "remote": search.get("remote")}):
+                    if c["id"] not in known and (detail_budget is None or detail_budget > 0) and wants_detail({**c, "remote": None}):
                         desc, criteria = _detail(http, c["id"])
                         if detail_budget is not None:
                             detail_budget -= 1
@@ -179,7 +179,7 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                     yield Job(
                         source="linkedin", ext_id=c["id"], company=c["company"], title=c["title"],
                         url=f"https://www.linkedin.com/jobs/view/{c['id']}/", location=c["location"],
-                        remote=True if search.get("remote") else None,
+                        remote=None,  # decided from the title, location and description when scoring
                         description=(desc + ("\n\n" + "\n".join(criteria) if criteria else "")).strip(),
                         tags=criteria, posted_at=c["posted"],
                     )

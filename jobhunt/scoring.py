@@ -35,6 +35,26 @@ OFFICE_DAYS = re.compile(
     r"(?:location|work(?:ing)? (?:model|mode|policy|setup))\s*[:\-–]\s*hybrid|\|\s*hybrid\b|\bhybrid\s*\(", re.I)
 HYBRID = re.compile(r"\bhybrid\b(?!\s*(?:cloud|infrastructure|infra|environments?|apps?|mobile|search|architecture|"
                     r"systems?|on-prem|deployments?))|\bh[ií]brido\b", re.I)
+# The description says the role itself is remote (not "remote debugging", "remote teams").
+REMOTE_DESC = re.compile(
+    r"(?:fully|100\s*%|completely|full|entirely)[ -]remote|remote[ -](?:first|only|friendly)|work from anywhere|"
+    r"work(?:ing)? (?:fully |100% )?remotely|(?:this|the) (?:role|position|job) is (?:fully )?remote|"
+    r"remote (?:role|position|job|contract|opportunity)|remote (?:in|across|within|from) (?:europe|the eu|emea|portugal)",
+    re.I)
+_MIXED = re.compile(r"on-?site|in[- ]person|office|hybrid|h[ií]brido|mix of|presencial", re.I)
+
+
+def says_remote(desc: str) -> bool:
+    """The description says the job is remote, in a sentence that doesn't also mention office or on-site work
+    ("a mix of working remotely, onsite at a client or in our office" is hybrid)."""
+    for m in REMOTE_DESC.finditer(desc or ""):
+        start = max(desc.rfind(".", 0, m.start()), desc.rfind("\n", 0, m.start())) + 1
+        ends = [i for i in (desc.find(".", m.end()), desc.find("\n", m.end())) if i != -1]
+        if not _MIXED.search(desc[start:min(ends) if ends else len(desc)]):
+            return True
+    return False
+
+
 REMOTE_TOO = re.compile(r"fully remote|100% remote|remote.first|work from anywhere|full remote|remote-friendly|"
                         r"remote\s*(?:or|and|/)\s*hybrid|hybrid\s*(?:or|and|/)\s*remote", re.I)
 
@@ -44,8 +64,8 @@ RESIDENCY = re.compile(
     r"(only|exclusively) (candidates|applicants) (based|located|residing) in", re.I)
 
 # ---------- seniority ----------
-# Junior-mid: what it asks fits within 1-3 years ("2+", "1-3", "3 years"). Senior: asks for more, including
-# open-ended "3+" / "at least 3" and ranges past 3 ("3-5"), or the title says so.
+# Junior-mid: what it asks fits within 1-2 years ("1+", "1-2", "2 years", "1-3"). Senior: asks for more than 2,
+# including open-ended "2+" / "at least 2", any minimum of 3 or more, ranges past 2 ("2-3"), or the title says so.
 
 _NUM = r"\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|um|uma|dois|duas|tr[eê]s|quatro|cinco|seis|sete|oito|nove|dez"
 _WORDS = {w: i for i, ws in enumerate(["", "one um uma", "two dois duas", "three tres três", "four quatro", "five cinco",
@@ -100,7 +120,7 @@ def _years_points(short: int) -> int:
 
 def _is_senior(req: tuple[int, int | None]) -> bool:
     lo, hi = req
-    return lo >= 4 or (lo == 3 and (hi is None or hi > 3))
+    return lo >= 3 or (lo == 2 and (hi is None or hi > 2))
 
 
 def seniority(title: str, desc: str) -> tuple[str | None, str]:
@@ -274,9 +294,7 @@ class Scorer:
             remote = False  # the title beats the search filter
         text = f"{location} {title}"
         if remote is None:
-            remote = bool(re.search(r"\bremote\b|remoto|teletrabalho|home.?office|anywhere", text)) or bool(
-                re.search(r"fully remote|100% remote|remote.first|work from anywhere", desc)
-            )
+            remote = bool(re.search(r"\bremote\b|remoto|teletrabalho|home.?office|anywhere", text)) or says_remote(desc)
         in_home = any(has_term(location, w) for w in self.home)
         in_country = in_home or any(has_term(location, w) for w in self.country)
         if in_home:
