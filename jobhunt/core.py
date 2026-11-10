@@ -59,11 +59,13 @@ def load_seed_companies() -> list[dict]:
 
 
 @cache
-def cv_text() -> str:
-    """Your CV as text: the one uploaded on the Profile page, or `cv_file` in profile.yaml."""
+def cv_text(stack: str | None = None) -> str:
+    """Your CV as text: the one uploaded on the Profile page, or `cv_file` in profile.yaml. For a Node/TypeScript
+    posting (stack "node"), `cv_file_node` when you have a second CV for those roles."""
     if (DATA / "cv.txt").exists():
         return (DATA / "cv.txt").read_text()
-    path = Path(load_profile().get("cv_file") or "").expanduser()
+    prof = load_profile()
+    path = Path((stack == "node" and prof.get("cv_file_node")) or prof.get("cv_file") or "").expanduser()
     if not path.is_file():
         return ""
     raw = path.read_text()

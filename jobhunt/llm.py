@@ -49,14 +49,15 @@ def parse_json(text: str) -> dict:
         raise ClaudeError(f"Claude didn't return valid JSON: {text[:300]}") from e
 
 
-def _me() -> str:
+def _me(stack: str | None = None) -> str:
+    """You, for a prompt. `stack` is the posting's (scoring.stack): Node/TS postings get your Node CV if you have one."""
     p = load_profile()
     rules = "\n".join(f"- {r}" for r in p.get("outreach_rules", []))
     return f"""<candidate>
 Name: {p['name']} · {p.get('linkedin_url', '')} · {p.get('github_url', '')}
 
 CV:
-{cv_text()}
+{cv_text(stack)}
 
 Story (in their words):
 {p.get('story', '')}
@@ -110,7 +111,7 @@ as strengths; startups often care less about years and titles."""
 
 def assess_job(conn: sqlite3.Connection, job_id: int) -> dict:
     job = conn.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
-    result = parse_json(run_claude(ASSESS.format(me=_me(), job=_job_block(job))))
+    result = parse_json(run_claude(ASSESS.format(me=_me(job["stack"]), job=_job_block(job))))
     conn.execute("UPDATE jobs SET assessment = ? WHERE dedup_key = ?", (json.dumps(result), job["dedup_key"]))
     conn.commit()
     return result
@@ -265,7 +266,7 @@ def draft_for_job(conn: sqlite3.Connection, job_id: int, kinds: list[str] | None
     assessment = f"<assessment>{job['assessment']}</assessment>" if job["assessment"] else ""
     wanted = {k: v for kind in (kinds or JOB_MESSAGES) for k, v in JOB_MESSAGES[kind].items()}
     fields = ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in wanted.items())
-    result = parse_json(run_claude(DRAFT_JOB.format(me=_me(), job=_job_block(job), assessment=assessment,
+    result = parse_json(run_claude(DRAFT_JOB.format(me=_me(job["stack"]), job=_job_block(job), assessment=assessment,
                                                     fields=fields)))
     # Re-read: another message for this job may have been drafted while Claude was writing this one.
     current = conn.execute("SELECT drafts FROM jobs WHERE id = ?", (job_id,)).fetchone()["drafts"]
