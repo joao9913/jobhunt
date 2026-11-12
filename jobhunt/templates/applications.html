@@ -1,43 +1,44 @@
 {% extends "base.html" %}
-{% from "macros.html" import job_status, pager with context %}
-{% block title %}Applications · jobhunt{% endblock %}
+{% from "macros.html" import job_status, pager, status_label with context %}
+{% block title %}{{ _('Applications') }} · jobhunt{% endblock %}
 {% block body %}
 <form class="filters" method="get">
   <span class="tabs">
     {% set keep = 'q=' ~ (q|q) ~ '&from=' ~ date_from ~ '&to=' ~ date_to %}
-    <a href="?tab=ongoing&{{ keep }}" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
-    <a href="?tab=archive&{{ keep }}" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
+    <a href="?tab=ongoing&{{ keep }}" class="{{ 'on' if tab == 'ongoing' }}">{{ _('ongoing') }} ({{ n_ongoing }})</a>
+    <a href="?tab=archive&{{ keep }}" class="{{ 'on' if tab == 'archive' }}">{{ _('archive') }} ({{ n_archive }})</a>
   </span>
   <input type="hidden" name="tab" value="{{ tab }}">
-  <input type="search" name="q" value="{{ q }}" placeholder="search role, company, location, notes" autofocus>
-  <select name="status" class="autosubmit">
-    <option value="">all {{ tab }} ({{ n_archive if tab == 'archive' else n_ongoing }})</option>
-    {% for group, statuses in [('Ongoing', ACTIVE_STATUSES), ('Archive', CLOSED_STATUSES)] %}
+  <input type="search" name="q" value="{{ q }}" placeholder="{{ _('search role, company, location, notes') }}" autofocus>
+  <select name="status" class="autosubmit" aria-label="{{ _('Status') }}">
+    <option value="">{{ _('all ongoing') if tab == 'ongoing' else _('all archived') }} ({{ n_archive if tab == 'archive' else n_ongoing }})</option>
+    {% for group, statuses in [(_('Ongoing'), ACTIVE_STATUSES), (_('Archive'), CLOSED_STATUSES)] %}
     <optgroup label="{{ group }}">
       {% for s in statuses %}
-      <option value="{{ s }}" {{ 'selected' if s == status }}>{{ STATUS_LABELS.get(s, s) }} ({{ per_status.get(s, 0) }})</option>
+      <option value="{{ s }}" {{ 'selected' if s == status }}>{{ status_label(s) }} ({{ per_status.get(s, 0) }})</option>
       {% endfor %}
     </optgroup>
     {% endfor %}
   </select>
-  <label class="meta" title="The day you applied">applied from
+  <label class="meta" title="{{ _('The day you applied') }}">{{ _('applied from') }}
     <input type="date" name="from" value="{{ date_from }}" max="{{ date_to or today }}"></label>
-  <label class="meta">to <input type="date" name="to" value="{{ date_to }}" min="{{ date_from }}" max="{{ today }}"></label>
-  <button>Filter</button>
-  {% if filtered %}<a class="btn" href="?tab={{ tab }}">Clear</a>{% endif %}
+  <label class="meta">{{ _('to') }} <input type="date" name="to" value="{{ date_to }}" min="{{ date_from }}" max="{{ today }}"></label>
+  <button>{{ _('Filter') }}</button>
+  {% if filtered %}<a class="btn" href="?tab={{ tab }}">{{ _('Clear') }}</a>{% endif %}
 </form>
 
 {% if stats is defined and stats %}
+{% set heading = _('Stack') if field.track_heading == 'stack' else _('Area') %}
 <div class="panel">
-  <h2>By stack <span class="meta">· every application so far, each posting once; "no reply" after {{ no_reply_days }} days without an answer</span></h2>
+  <h2>{{ _('By stack') if field.track_heading == 'stack' else _('By area') }} <span class="meta">· {{ _('every application so far, each posting once; “no reply” after {n} days without an answer', n=no_reply_days) }}</span></h2>
   <table>
-    <tr><th>Stack</th><th>Applied</th><th>Waiting</th><th>Interview</th><th>Rejected</th><th>No reply</th><th>Reply rate</th></tr>
+    <tr><th>{{ heading }}</th><th>{{ _('Applied') }}</th><th>{{ _('Waiting') }}</th><th>{{ _('Interview') }}</th><th>{{ _('Rejected') }}</th><th>{{ _('No reply') }}</th><th>{{ _('Reply rate') }}</th></tr>
     {% for s in stats %}
     {% set answered = s.interview + s.rejected %}
     <tr>
-      <td class="t">{{ {'python': 'Python', 'node': 'Node / TypeScript', 'both': 'Python + Node', 'other': 'neither mentioned'}[s.stack] }}</td>
+      <td class="t">{{ _(track_labels[s.stack]) if s.stack in track_labels else _('not stated') }}</td>
       <td>{{ s.total }}</td><td>{{ s.waiting }}</td><td>{{ s.interview }}</td><td>{{ s.rejected }}</td><td>{{ s['no reply'] }}</td>
-      <td class="meta">{{ (100 * answered / s.total)|round|int if s.total else 0 }}% answered · {{ (100 * s.interview / s.total)|round|int if s.total else 0 }}% interview</td>
+      <td class="meta">{{ _('{a}% answered · {b}% interview', a=(100 * answered / s.total)|round|int if s.total else 0, b=(100 * s.interview / s.total)|round|int if s.total else 0) }}</td>
     </tr>
     {% endfor %}
   </table>
@@ -47,14 +48,14 @@
 <div class="panel flush">
 {% if pg.items %}
 <table>
-  <tr><th>Role</th><th>Location</th><th>Applied</th>{% if tab == 'archive' %}<th>Closed</th>{% endif %}<th>Notes</th><th></th></tr>
+  <tr><th>{{ _('Role') }}</th><th>{{ _('Location') }}</th><th>{{ _('Applied') }}</th>{% if tab == 'archive' %}<th>{{ _('Closed') }}</th>{% endif %}<th>{{ _('Notes') }}</th><th></th></tr>
   {% for j in pg.items %}
   <tr>
     <td class="t">
       <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
-      <div class="meta">{{ j.company }}{% if j.stack %} <span class="pill">{{ {'python': 'python', 'node': 'node/ts', 'both': 'python+node'}[j.stack] }}</span>{% endif %}</div>
+      <div class="meta">{{ j.company }}{% if j.stack in track_labels %} <span class="pill">{{ _(track_labels[j.stack]) }}</span>{% endif %}</div>
     </td>
-    <td class="meta" style="max-width:180px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
+    <td class="meta" style="max-width:180px">{{ j.location }}{% if j.remote %} · {{ _('remote') }}{% endif %}</td>
     <td class="meta" style="white-space:nowrap">{{ j.applied_on or '—' }}</td>
     {% if tab == 'archive' %}<td class="meta" style="white-space:nowrap">{{ j.closed_on or '—' }}</td>{% endif %}
     <td class="meta" style="max-width:280px">{{ (j.notes or '')[:140] }}</td>
@@ -63,9 +64,10 @@
   {% endfor %}
 </table>
 {{ pager(pg) }}
-{% elif filtered %}<p class="empty">No {{ tab }} applications match these filters.{% if not status and (n_archive if tab == 'ongoing' else n_ongoing) %}
-  <a href="?tab={{ 'archive' if tab == 'ongoing' else 'ongoing' }}&q={{ q|q }}&from={{ date_from }}&to={{ date_to }}">See {{ n_archive if tab == 'ongoing' else n_ongoing }} in {{ 'archive' if tab == 'ongoing' else 'ongoing' }} →</a>{% endif %}</p>
-{% elif tab == 'archive' %}<p class="empty">Nothing archived yet.</p>
-{% else %}<p class="empty">No ongoing applications. Set a posting to "applied" on its page and it shows up here.</p>{% endif %}
+{% elif filtered %}{% set other = n_archive if tab == 'ongoing' else n_ongoing %}
+<p class="empty">{{ _('No ongoing applications match these filters.') if tab == 'ongoing' else _('No archived applications match these filters.') }}{% if not status and other %}
+  <a href="?tab={{ 'archive' if tab == 'ongoing' else 'ongoing' }}&q={{ q|q }}&from={{ date_from }}&to={{ date_to }}">{{ _('See {n} in the archive →', n=other) if tab == 'ongoing' else _('See {n} ongoing →', n=other) }}</a>{% endif %}</p>
+{% elif tab == 'archive' %}<p class="empty">{{ _('Nothing archived yet.') }}</p>
+{% else %}<p class="empty">{{ _('No ongoing applications. Set a posting to “applied” on its page and it shows up here.') }}</p>{% endif %}
 </div>
 {% endblock %}

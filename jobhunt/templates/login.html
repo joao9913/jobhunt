@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}{{ _('Log in') }} · jobhunt{% endblock %}
+{% block body %}
+<style>
+.login { max-width: 360px; margin: 9vh auto 0; }
+.login h1 { font-size: 24px; margin-bottom: 4px; }
+.login .sub { margin-bottom: 22px; }
+.login form { display: grid; gap: 14px; }
+.login label { display: grid; gap: 5px; font-size: 12.5px; font-weight: 600; color: var(--ink-2); }
+.login input { width: 100%; height: 38px; font-size: 14px; }
+.login button { height: 38px; justify-content: center; margin-top: 4px; }
+.login .error { margin: 0; padding: 9px 12px; border-radius: 6px; background: color-mix(in srgb, var(--no) 10%, var(--sheet));
+                box-shadow: inset 3px 0 0 var(--no); }
+</style>
+<div class="login">
+  <div class="panel" style="padding:26px 26px 24px">
+    <h1>{{ _('Log in') }}</h1>
+    <p class="sub">{{ _('Your own job search: your profile, postings and applications.') }}</p>
+    <form method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      {% if error %}<p class="error" role="alert">{{ _('Wrong username or password.') }}</p>{% endif %}
+      <label>{{ _('Username') }}
+        <input name="user" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus></label>
+      <label>{{ _('Password') }}
+        <input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary" data-busy="{{ _('Logging in…') }}">{{ _('Log in') }}</button>
+    </form>
+  </div>
+  <p class="meta" style="text-align:center">{{ _('No account? Ask whoever runs this computer to add one with') }} <code>jobhunt user add</code>.</p>
+</div>
+{% endblock %}

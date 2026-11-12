@@ -6,7 +6,7 @@ import re
 from collections.abc import Iterator
 
 from ..core import Http, Job, html_to_text, iso_date, ts_to_iso
-from ..scoring import is_engineering_title
+from ..scoring import is_relevant_title
 
 
 def landing_jobs(http: Http, profile: dict) -> Iterator[Job]:
@@ -17,7 +17,7 @@ def landing_jobs(http: Http, profile: dict) -> Iterator[Job]:
         if not data:
             break
         for j in data:
-            if not is_engineering_title(j.get("title", "")):
+            if not is_relevant_title(j.get("title", "")):
                 continue
             m = re.search(r"/at/([^/]+)/", j.get("url", ""))
             company = m.group(1).replace("-", " ").title() if m else "Unknown"
@@ -52,7 +52,7 @@ def remoteok(http: Http, profile: dict) -> Iterator[Job]:
     for j in (data or [])[1:]:  # first item is a legal notice
         if not isinstance(j, dict) or not j.get("position"):
             continue
-        if not is_engineering_title(j["position"]):
+        if not is_relevant_title(j["position"]):
             continue
         salary = f"{j['salary_min']}–{j['salary_max']} USD" if j.get("salary_min") else ""
         yield Job(
@@ -70,7 +70,7 @@ def arbeitnow(http: Http, profile: dict) -> Iterator[Job]:
         if not data:
             break
         for j in data.get("data", []):
-            if not is_engineering_title(j["title"]):
+            if not is_relevant_title(j["title"]):
                 continue
             yield Job(
                 source="arbeitnow", ext_id=j["slug"], company=j["company_name"], title=j["title"], url=j["url"],
@@ -91,7 +91,7 @@ def himalayas(http: Http, profile: dict) -> Iterator[Job]:
             data = http.json("https://himalayas.app/jobs/api/search", params={"q": q, "country": country, "page": page})
             jobs = (data or {}).get("jobs", [])
             for j in jobs:
-                if not is_engineering_title(j["title"]):
+                if not is_relevant_title(j["title"]):
                     continue
                 restr = j.get("locationRestrictions") or []
                 loc = "Remote, Europe" if country and country in restr else ("Remote, worldwide" if not restr else ", ".join(restr[:4]))
@@ -147,6 +147,7 @@ def hn_whos_hiring(http: Http, profile: dict) -> Iterator[Job]:
         )
 
 
+from .portugal import netempregos  # noqa: E402
 from .startups import wellfound, yc_jobs  # noqa: E402
 
 BOARDS = {
@@ -158,4 +159,5 @@ BOARDS = {
     "arbeitnow": arbeitnow,
     "himalayas": himalayas,
     "hn": hn_whos_hiring,
+    "netempregos": netempregos,
 }

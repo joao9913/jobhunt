@@ -1,51 +1,73 @@
-{% macro score(n, big=False) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }} {{ 'big' if big }}" title="Fit score out of 100">{{ n }}</span>{% endmacro %}
+{% macro score(n, big=False) %}{% set n = n or 0 %}<span class="score {{ 'hi' if n >= 70 }} {{ 'big' if big }}" title="{{ _('Fit score out of 100') }}">{{ n }}</span>{% endmacro %}
 
 {# A drafted message you can edit; goes inside a form.edit-draft with a .save button (see base.html). #}
 {% macro draft_field(label, name, text, rows=8) %}
-<div class="label">{{ label }}{% if rows > 1 %} · <span class="chars">{{ (text or '')|length }}</span> chars{% endif %}</div>
-<div class="draft"><button class="copy" type="button">Copy</button>{% if rows == 1 %}<input class="text" name="{{ name }}" value="{{ text or '' }}">
+<div class="label">{{ label }}{% if rows > 1 %} · <span class="chars">{{ (text or '')|length }}</span> {{ _('chars') }}{% endif %}</div>
+<div class="draft"><button class="copy" type="button">{{ _('Copy') }}</button>{% if rows == 1 %}<input class="text" name="{{ name }}" value="{{ text or '' }}">
   {%- else %}<textarea class="text" name="{{ name }}" rows="{{ rows }}">{{ text or '' }}</textarea>{% endif %}</div>
 {% endmacro %}
 
 {% macro task_state(key) %}
-{% if tasks.get(key) == 'running' %}<p class="working">Claude is working on this… the page refreshes by itself.</p>
+{% if tasks.get(key) == 'running' %}<p class="working">{{ _('Claude is working on this… the page refreshes by itself.') }}</p>
 {% elif tasks.get(key, '').startswith('error') %}<p class="error">{{ tasks[key] }}</p>{% endif %}
 {% endmacro %}
+
+{# A status's label in your language: "ignored" reads "not interested". #}
+{% macro status_label(s) %}{{ _(STATUS_LABELS.get(s, s)) }}{% endmacro %}
 
 {% macro job_status(j, next=None) %}
 <form class="inline" method="post" action="/jobs/{{ j.id }}/status">
   {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-  <select name="status" class="autosubmit">
-    {% for group, statuses in [('Triage', TRIAGE_STATUSES), ('Application', ACTIVE_STATUSES), ('Close as', CLOSED_STATUSES)] %}
+  <select name="status" class="autosubmit" aria-label="{{ _('Status') }}">
+    {% for group, statuses in [(_('Triage'), TRIAGE_STATUSES), (_('Application'), ACTIVE_STATUSES), (_('Close as'), CLOSED_STATUSES)] %}
     <optgroup label="{{ group }}">
-      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == j.status }}>{{ STATUS_LABELS.get(s, s) }}</option>{% endfor %}
+      {% for s in statuses %}<option value="{{ s }}" {{ 'selected' if s == j.status }}>{{ status_label(s) }}</option>{% endfor %}
     </optgroup>
     {% endfor %}
   </select>
 </form>
 {% if applied_here is defined and j.status in TRIAGE_STATUSES %}{% set prev = applied_here(j) %}{% if prev %}
-<span class="pill check" title="{% for p in prev %}{{ p.applied_on }} · {{ p.title }} · {{ STATUS_LABELS.get(p.status, p.status) }}&#10;{% endfor %}">applied here ×{{ prev|length }}</span>
+<span class="pill check" title="{% for p in prev %}{{ p.applied_on }} · {{ p.title }} · {{ status_label(p.status) }}&#10;{% endfor %}">{{ _('applied here ×{n}', n=prev|length) }}</span>
 {% endif %}{% endif %}
 {% endmacro %}
+
+{% macro company_status(c) %}
+<form class="inline" method="post" action="/companies/{{ c.id }}/status">
+  <select name="status" class="autosubmit" aria-label="{{ _('Status') }}">{% for s in COMPANY_STATUSES %}<option value="{{ s }}" {{ 'selected' if s == c.status }}>{{ _(s) }}</option>{% endfor %}</select>
+</form>
+{% endmacro %}
+
+{# Pills for a company: its kind (when it's the one worth flagging, or any kind it was given) and startup. #}
+{% macro company_pills(co, all_kinds=False) %}
+{%- if co.kind and co.kind == highlight_kind %} <span class="pill nontech">{{ _(kinds_of_company[co.kind]) }}</span>
+{%- elif all_kinds and co.kind %} <span class="pill">{{ _(kinds_of_company.get(co.kind, co.kind)) }}</span>{% endif %}
+{%- if co.startup %} <span class="pill startup">{{ _('startup') }}{% if co.stage %} · {{ co.stage }}{% endif %}</span>{% endif %}
+{%- endmacro %}
+
+{% macro verdict(a) %}{% if a %} <span class="pill {{ a.verdict }}">{{ _(a.verdict) }} {{ a.fit }}/10</span>{% endif %}{% endmacro %}
+
+{% macro level_pill(j) %}{% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why|reason }}">{{ _('junior–mid') if j.seniority == 'junior-mid' else _('senior') }}</span>{% endif %}{% endmacro %}
+
+{% macro remote_pill(j) %}{% if j.remote_check %} <span class="pill check" title="{{ _("Doesn't say if they hire from {country}: ask the recruiter before applying", country=home_country or _('your country')) }}">{{ _('check remote') }}</span>{% endif %}{% endmacro %}
 
 {% macro pager(pg) %}
 {% if pg.pages > 1 %}
 <div class="row pager">
-  {% if pg.page > 1 %}<a class="btn" href="{{ page_url(pg, pg.page - 1) }}">← Previous</a>{% endif %}
+  {% if pg.page > 1 %}<a class="btn" href="{{ page_url(pg, pg.page - 1) }}">{{ _('← Previous') }}</a>{% endif %}
   {% for p in range(1, pg.pages + 1) %}
     {% if p == 1 or p == pg.pages or (p - pg.page)|abs <= 2 %}<a class="btn {{ 'primary' if p == pg.page }}" href="{{ page_url(pg, p) }}">{{ p }}</a>
     {% elif (p - pg.page)|abs == 3 %}<span class="meta">…</span>{% endif %}
   {% endfor %}
-  {% if pg.page < pg.pages %}<a class="btn" href="{{ page_url(pg, pg.page + 1) }}">Next →</a>{% endif %}
-  <span class="meta">{{ pg.first + 1 }}–{{ pg.first + pg.items|length }} of {{ pg.total }}</span>
+  {% if pg.page < pg.pages %}<a class="btn" href="{{ page_url(pg, pg.page + 1) }}">{{ _('Next →') }}</a>{% endif %}
+  <span class="meta">{{ _('{a}–{b} of {n}', a=pg.first + 1, b=pg.first + pg.items|length, n=pg.total) }}</span>
 </div>
 {% endif %}
 {% endmacro %}
 
 {% macro level_select(level, counts) %}
-<select name="level" class="autosubmit">
-  {% for value, label in [('', 'all levels'), ('junior-mid', 'junior–mid (up to 2 years)'), ('senior', 'senior (more than 2 years)'),
-                          ('none', 'level not stated')] %}
+<select name="level" class="autosubmit" aria-label="{{ _('Level') }}">
+  {% for value, label in [('', _('all levels')), ('junior-mid', _('junior–mid (up to 2 years)')), ('senior', _('senior (more than 2 years)')),
+                          ('none', _('level not stated'))] %}
   <option value="{{ value }}" {{ 'selected' if level == value }}>{{ label }} ({{ counts.get(value, 0) }})</option>
   {% endfor %}
 </select>

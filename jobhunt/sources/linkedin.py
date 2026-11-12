@@ -21,13 +21,16 @@ from collections.abc import Iterator
 
 from bs4 import BeautifulSoup
 
-from ..core import CANCEL, DATA, Http, Job, check_cancel, html_to_text, log
+from ..core import CANCEL, Http, Job, check_cancel, data_dir, html_to_text, log
 
 SEARCH = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 DETAIL = "https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/{id}"
 
 
-STATE = DATA / "linkedin_state.json"  # when the last complete LinkedIn search finished
+def _state():
+    return data_dir() / "linkedin_state.json"  # when your last complete LinkedIn search started
+
+
 MAX_WINDOW = 30 * 86400                # LinkedIn's "posted in the last N seconds" filter, at most 30 days
 OVERLAP = 3600                         # LinkedIn can list a posting a little after its posted time
 BACKOFF = [15, 30, 60, 120, 240, 300, 300, 300, 300, 300]  # waits after consecutive 429s (~33 min total)
@@ -72,7 +75,7 @@ def _get(http: Http, url: str, **params) -> str | None:
 def _window() -> int:
     """Seconds to look back: since the last complete run started, plus OVERLAP, 30 days at most."""
     try:
-        last = json.loads(STATE.read_text())["last_complete"]
+        last = json.loads(_state().read_text())["last_complete"]
     except (OSError, ValueError, KeyError, TypeError):
         return MAX_WINDOW
     return int(min(MAX_WINDOW, max(OVERLAP, time.time() - last + OVERLAP)))
@@ -80,7 +83,7 @@ def _window() -> int:
 
 def _mark_complete(started: float) -> None:
     """Record when this run *started*: postings published while it ran are picked up next time."""
-    STATE.write_text(json.dumps({"last_complete": started}))
+    _state().write_text(json.dumps({"last_complete": started}))
 
 
 def _cards(page: str) -> list[dict]:

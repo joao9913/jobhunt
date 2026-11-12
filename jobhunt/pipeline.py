@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import logging
 import sqlite3
@@ -11,8 +12,21 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from . import db, inbox, llm
-from .core import CANCEL, Cancelled, Http, Job, check_cancel, company_key, load_profile, load_seed_companies, log
-from .scoring import Scorer, refresh_company_stats, rescore_all
+from .core import (
+    CANCEL,
+    USERS,
+    Cancelled,
+    Http,
+    Job,
+    check_cancel,
+    company_key,
+    data_dir,
+    load_profile,
+    load_seed_companies,
+    log,
+    multi_user,
+)
+from .scoring import Scorer, refresh_company_stats, rescore_all, use_profile
 from .sources.ats import FETCHERS, resolve_ats
 from .sources.boards import BOARDS
 from .sources.linkedin import backfill, check_closed, linkedin
@@ -92,11 +106,10 @@ def _collect_ats(conn: sqlite3.Connection, http: Http) -> list[Job]:
     return jobs
 
 
-def _collect_boards(http: Http, profile: dict, only: set[str] | None) -> list[Job]:
+def _collect_boards(http: Http, profile: dict, only: set[str]) -> list[Job]:
     jobs: list[Job] = []
     with ThreadPoolExecutor(6) as pool:
-        futs = {pool.submit(lambda f=f: list(f(http, profile))): name for name, f in BOARDS.items()
-                if only is None or name in only}
+        futs = {pool.submit(lambda f=f: list(f(http, profile))): name for name, f in BOARDS.items() if name in only}
         for fut in as_completed(futs):
             try:
                 got = fut.result()
@@ -175,7 +188,7 @@ class RunProgress(logging.Handler):
         super().__init__(logging.INFO)
         self.run_id, self.step, self.lines = run_id, "Starting", []
         self.state_lock, self.dirty, self.done = threading.Lock(), True, threading.Event()
-        self.conn = sqlite3.connect(db.DB_PATH, timeout=2, check_same_thread=False)
+        self.conn = sqlite3.connect(db.db_path(), timeout=2, check_same_thread=False)
         self.writer = threading.Thread(target=self._loop, daemon=True)
         self.writer.start()
 
@@ -222,13 +235,34 @@ class RunProgress(logging.Handler):
         super().close()
 
 
+def _wait_for_other_fetches() -> object:
+    """One fetch at a time on this computer, whoever it's for: two at once would double the requests LinkedIn
+    and the boards see from this address. Returns the open lock file (the lock lasts until it's closed)."""
+    lock = open((USERS if multi_user() else data_dir()) / ".fetch.lock", "w")  # noqa: SIM115
+    waiting = False
+    while True:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return lock
+        except BlockingIOError:
+            if not waiting:
+                log.info("Waiting for another search on this computer to finish...")
+                waiting = True
+            CANCEL.wait(3)
+            check_cancel()
+
+
 def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
     conn = db.connect()
     run_id = conn.execute("INSERT INTO runs (started) VALUES (?)", (db.now(),)).lastrowid
     conn.commit()
     progress = RunProgress(run_id)
     log.addHandler(progress)
+    lock = None
     try:
+        lock = _wait_for_other_fetches()
+        conn.execute("UPDATE runs SET started = ? WHERE id = ?", (db.now(), run_id))
+        conn.commit()
         return _fetch(conn, run_id, sources, resolve_limit)
     except Cancelled:
         conn.rollback()
@@ -247,17 +281,22 @@ def fetch(sources: set[str] | None = None, resolve_limit: int = 60) -> dict:
         log.removeHandler(progress)
         progress.close()
         conn.close()
+        if lock is not None:
+            lock.close()
 
 
 def _fetch(conn: sqlite3.Connection, run_id: int, sources: set[str] | None, resolve_limit: int) -> dict:
     http = Http()
     profile = load_profile()
+    use_profile(profile)
     scorer = Scorer(profile)
     seed_companies(conn)
-    want = lambda name: not sources or name in sources  # noqa: E731
+    # A source runs when your field uses it (fields.py, or `sources:` in profile.yaml) and --only doesn't leave it out.
+    fielded = set(profile["sources"]) | {"assess"}
+    want = lambda name: name in fielded and (not sources or name in sources)  # noqa: E731
 
     log.info("Job boards...")
-    collected = _collect_boards(http, profile, {s for s in BOARDS if want(s)} if sources else None)
+    collected = _collect_boards(http, profile, {s for s in BOARDS if want(s)})
     new = store(conn, collected)
     conn.commit()
 

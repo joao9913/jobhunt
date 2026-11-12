@@ -6,13 +6,13 @@ import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterator
 
 from ..core import Http, Job, html_to_text, iso_date, ts_to_iso
-from ..scoring import is_engineering_title
+from ..scoring import is_relevant_title
 
 
 def greenhouse(http: Http, slug: str, company: str) -> Iterator[Job]:
     data = http.json(f"https://boards-api.greenhouse.io/v1/boards/{slug}/jobs", params={"content": "true"})
     for j in (data or {}).get("jobs", []):
-        if not is_engineering_title(j["title"]):
+        if not is_relevant_title(j["title"]):
             continue
         yield Job(
             source="greenhouse", ext_id=f"{slug}:{j['id']}", company=company, title=j["title"],
@@ -28,7 +28,7 @@ def lever(http: Http, slug: str, company: str) -> Iterator[Job]:
         if data:
             break
     for j in data or []:
-        if not is_engineering_title(j.get("text", "")):
+        if not is_relevant_title(j.get("text", "")):
             continue
         cats = j.get("categories") or {}
         lists = "\n".join(f"{x.get('text', '')}\n{html_to_text(x.get('content', ''))}" for x in j.get("lists", []))
@@ -45,7 +45,7 @@ def lever(http: Http, slug: str, company: str) -> Iterator[Job]:
 def ashby(http: Http, slug: str, company: str) -> Iterator[Job]:
     data = http.json(f"https://api.ashbyhq.com/posting-api/job-board/{slug}")
     for j in (data or {}).get("jobs", []):
-        if not is_engineering_title(j["title"]) or j.get("isListed") is False:
+        if not is_relevant_title(j["title"]) or j.get("isListed") is False:
             continue
         locs = [j.get("location", "")] + [s.get("location", "") for s in j.get("secondaryLocations") or []]
         yield Job(
@@ -66,7 +66,7 @@ def smartrecruiters(http: Http, slug: str, company: str) -> Iterator[Job]:
         )
         content = (data or {}).get("content", [])
         for j in content:
-            if not is_engineering_title(j["name"]):
+            if not is_relevant_title(j["name"]):
                 continue
             loc = j.get("location") or {}
             desc = ""
@@ -91,7 +91,7 @@ def smartrecruiters(http: Http, slug: str, company: str) -> Iterator[Job]:
 def workable(http: Http, slug: str, company: str) -> Iterator[Job]:
     data = http.json(f"https://apply.workable.com/api/v1/widget/accounts/{slug}", params={"details": "true"})
     for j in (data or {}).get("jobs", []):
-        if not is_engineering_title(j.get("title", "")):
+        if not is_relevant_title(j.get("title", "")):
             continue
         loc = ", ".join(filter(None, [j.get("city"), j.get("state"), j.get("country")]))
         yield Job(
@@ -105,7 +105,7 @@ def workable(http: Http, slug: str, company: str) -> Iterator[Job]:
 def recruitee(http: Http, slug: str, company: str) -> Iterator[Job]:
     data = http.json(f"https://{slug}.recruitee.com/api/offers/")
     for j in (data or {}).get("offers", []):
-        if not is_engineering_title(j.get("title", "")):
+        if not is_relevant_title(j.get("title", "")):
             continue
         yield Job(
             source="recruitee", ext_id=f"{slug}:{j['id']}", company=company, title=j["title"],
@@ -129,7 +129,7 @@ def personio(http: Http, slug: str, company: str) -> Iterator[Job]:
         return
     for pos in root.iter("position"):
         title = pos.findtext("name", "")
-        if not is_engineering_title(title):
+        if not is_relevant_title(title):
             continue
         pid = pos.findtext("id", "")
         desc = "\n".join(

@@ -6,7 +6,7 @@ import json
 import sqlite3
 import time
 
-from .core import DATA, DB_PATH, Job, company_key, title_key
+from .core import Job, company_key, db_path, title_key
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS jobs (
@@ -98,8 +98,7 @@ def today() -> str:
 
 
 def connect() -> sqlite3.Connection:
-    DATA.mkdir(exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=120, check_same_thread=False)
+    conn = sqlite3.connect(db_path(), timeout=120, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
@@ -124,7 +123,7 @@ def _migrate(conn: sqlite3.Connection) -> None:
     for col, decl in [("seen", "INTEGER NOT NULL DEFAULT 0"), ("applied_on", "TEXT"), ("closed_on", "TEXT"),
                       ("checked_on", "TEXT"), ("remote_check", "INTEGER NOT NULL DEFAULT 0"),
                       ("seniority", "TEXT"), ("seniority_why", "TEXT"),
-                      ("stack", "TEXT")]:  # python | node | both | NULL, see scoring.stack  # junior-mid | senior | NULL (not stated)  # checked_on: last time we checked it still takes applications
+                      ("stack", "TEXT")]:  # the field's track (python | node | both, clinical...) or NULL, see scoring.track  # junior-mid | senior | NULL (not stated)  # checked_on: last time we checked it still takes applications
         if col not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {decl}")
     conn.commit()
@@ -142,8 +141,9 @@ def expire_applications(conn: sqlite3.Connection, days: int) -> int:
     return cur.rowcount
 
 
-def applications_by_stack(conn: sqlite3.Connection) -> list[dict]:
-    """Applications per stack and outcome, one row per stack (each posting counted once)."""
+def applications_by_stack(conn: sqlite3.Connection, order: list[str] | None = None) -> list[dict]:
+    """Applications per track (stack / area, see scoring.track) and outcome, one row per track (each posting
+    counted once). `order`: the field's tracks, in the order to list them."""
     rows = conn.execute(
         """SELECT COALESCE(stack, 'other') AS stack, status, COUNT(DISTINCT dedup_key) AS n FROM jobs
            WHERE applied_on IS NOT NULL GROUP BY 1, 2""").fetchall()
@@ -155,8 +155,8 @@ def applications_by_stack(conn: sqlite3.Connection) -> list[dict]:
         key = ("waiting" if r["status"] == "applied" else "interview" if r["status"] in ("interviewing", "offer", "accepted", "declined")
                else r["status"] if r["status"] in ("rejected", "no reply") else "other")
         d[key] += r["n"]
-    order = ["python", "node", "both", "other"]
-    return sorted(out.values(), key=lambda d: order.index(d["stack"]) if d["stack"] in order else 9)
+    order = [*(order or []), "other"]
+    return sorted(out.values(), key=lambda d: order.index(d["stack"]) if d["stack"] in order else 99)
 
 
 def applied_at_company(conn: sqlite3.Connection, company_key: str, dedup_key: str) -> list[sqlite3.Row]:

@@ -3,17 +3,34 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import logging
+import os
+import shutil
+import socket
+import subprocess
 import sys
 import textwrap
 
-from . import db, llm
+from . import core, db, llm
 from .core import load_profile, log
 
 
 def cmd_fetch(args) -> None:
     from .pipeline import fetch
+
+    if core.multi_user() and not core.current_user():
+        # Every account, one after the other (the daily schedule runs this), each in its own process.
+        failed = []
+        for name in core.accounts():
+            print(f"\n=== {name} ===", flush=True)
+            cmd = [sys.executable, "-m", "jobhunt.cli", "--user", name, "fetch", *sys.argv[sys.argv.index("fetch") + 1:]]
+            if subprocess.run(cmd, cwd=core.ROOT).returncode:
+                failed.append(name)
+        if failed:
+            sys.exit(f"Fetch failed or was cancelled for: {', '.join(failed)}")
+        return
 
     sources = set(args.only.split(",")) if args.only else None
     summary = fetch(sources, resolve_limit=args.resolve)
@@ -122,11 +139,76 @@ def _company_ids(conn, refs: list[str]) -> list[int]:
     return out
 
 
+def _lan_ip() -> str | None:
+    """This computer's address on your network (no packet is sent: connecting a UDP socket only picks a route)."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("192.168.0.1", 9))
+            return s.getsockname()[0]
+    except OSError:
+        return None
+
+
 def cmd_serve(args) -> None:
     from .web import create_app
 
+    host = args.host or ("0.0.0.0" if core.multi_user() else "127.0.0.1")
+    if host != "127.0.0.1" and not core.multi_user():
+        sys.exit("Without accounts the dashboard has no login, so it only listens on this computer. Add one with "
+                 "`jobhunt user add NAME --adopt` first.")
+    if args.install:
+        from .schedule import install_server
+
+        print(install_server(host, args.port))
+        return
     print(f"Dashboard: http://127.0.0.1:{args.port}")
-    create_app().run(host="127.0.0.1", port=args.port, debug=False, threaded=True)
+    if host == "0.0.0.0" and (ip := _lan_ip()):
+        print(f"On your network: http://{ip}:{args.port}  (log in with an account from `jobhunt user list`)")
+    create_app().run(host=host, port=args.port, debug=False, threaded=True)
+
+
+def cmd_user(args) -> None:
+    """Accounts: each gets users/<name>/ with its own profile, CV and database, and a password for the dashboard."""
+    name = (args.name or "").lower()
+    if args.action == "list":
+        print("\n".join(core.accounts()) or "No accounts: the app runs with one profile and no login.")
+        return
+    if not core.USERNAME.match(name):
+        sys.exit("A username is lowercase letters, digits, - or _ (up to 32), e.g. ana")
+    exists = core.account_path(name).is_file()
+    if args.action == "add" and exists:
+        sys.exit(f"{name} already exists. Change the password with `jobhunt user passwd {name}`.")
+    if args.action == "passwd" and not exists:
+        sys.exit(f"No account called {name}.")
+    if args.action == "add" and args.adopt:
+        if core.accounts():
+            sys.exit("--adopt is for the first account: it moves the existing profile.yaml and data/ into it.")
+        if not (core.ROOT / "profile.yaml").exists() and not (core.ROOT / "data").exists():
+            sys.exit("Nothing to adopt: no profile.yaml or data/ in the repo.")
+    if sys.stdin.isatty():
+        password = getpass.getpass(f"Password for {name}: ")
+        if getpass.getpass("Again: ") != password:
+            sys.exit("The passwords don't match.")
+    else:
+        password = sys.stdin.readline().rstrip("\n")
+    if len(password) < 8:
+        sys.exit("Use at least 8 characters.")
+    core.set_password(name, password)
+    if args.action == "passwd":
+        print(f"Password changed for {name}.")
+        return
+    home = core.USERS / name
+    if args.adopt:
+        for item in ("profile.yaml", "data"):
+            if (core.ROOT / item).exists():
+                shutil.move(core.ROOT / item, home / item)
+        print(f"Moved profile.yaml and data/ into {home}.")
+    (home / "data").mkdir(exist_ok=True)
+    print(f"Account {name} created ({home}). Start the dashboard with `jobhunt serve`; it now needs a login and "
+          "listens on your network.")
+    if not args.adopt and len(core.accounts()) == 1 and (core.ROOT / "profile.yaml").exists():
+        print("Note: the existing profile.yaml and data/ in the repo aren't used with accounts. To keep them, "
+              "remove this account's folder and run `jobhunt user add NAME --adopt` instead.")
 
 
 def cmd_schedule(args) -> None:
@@ -136,8 +218,10 @@ def cmd_schedule(args) -> None:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(prog="jobhunt", description="Find, rank and reach out to companies with dev teams.")
+    ap = argparse.ArgumentParser(prog="jobhunt", description="Find, rank and apply to jobs; research companies and "
+                                                             "draft outreach.")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("--user", help="the account to act as, when there are accounts (see `jobhunt user`)")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     p = sub.add_parser("fetch", help="collect postings from every source, discover companies, score")
@@ -173,9 +257,19 @@ def main() -> None:
     p.add_argument("--person", help='e.g. "Ana Silva, Engineering Manager"')
     p.set_defaults(fn=cmd_draft)
 
-    p = sub.add_parser("serve", help="open the local dashboard")
+    p = sub.add_parser("serve", help="open the dashboard")
     p.add_argument("--port", type=int, default=5055)
+    p.add_argument("--host", help="address to listen on (default: 127.0.0.1, or 0.0.0.0 = your network with accounts)")
+    p.add_argument("--install", action="store_true", help="keep it running in the background, also after a restart "
+                                                          "(macOS launchd)")
     p.set_defaults(fn=cmd_serve)
+
+    p = sub.add_parser("user", help="accounts: add, passwd, list")
+    p.add_argument("action", choices=["add", "passwd", "list"])
+    p.add_argument("name", nargs="?")
+    p.add_argument("--adopt", action="store_true", help="with add: move the existing profile.yaml and data/ into "
+                                                        "this (first) account")
+    p.set_defaults(fn=cmd_user)
 
     p = sub.add_parser("schedule", help="run `fetch` every morning (macOS launchd)")
     p.add_argument("--hour", type=int, default=8)
@@ -185,7 +279,15 @@ def main() -> None:
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(message)s")
     logging.getLogger("httpx").setLevel(logging.WARNING)
     log.setLevel(logging.DEBUG if args.verbose else logging.INFO)
-    args.fn(args)
+    if args.user:
+        os.environ["JOBHUNT_USER"] = args.user.lower()
+    if core.multi_user() and args.fn not in (cmd_user, cmd_serve, cmd_schedule, cmd_fetch) and not core.current_user():
+        sys.exit(f"There are accounts: say which one, e.g. `jobhunt --user {(core.accounts() or ['NAME'])[0]} "
+                 f"{args.cmd}`.")
+    try:
+        args.fn(args)
+    except core.NoUser as e:
+        sys.exit(str(e))
 
 
 if __name__ == "__main__":

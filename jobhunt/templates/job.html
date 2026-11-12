@@ -4,93 +4,91 @@
 {% block body %}
 {% set a = j.assessment|loads %}
 {% set d = j.drafts|loads %}
-<p class="back"><a href="/jobs" id="back">← Jobs</a></p>
+<p class="back"><a href="/jobs" id="back">← {{ _('Jobs') }}</a></p>
 <div class="job-head">
   {{ score(j.score, big=True) }}
   <div>
     <h1>{{ j.title }}</h1>
     <p class="sub">
       {% if company %}<a href="/companies/{{ company.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
-      · {{ j.location }}{% if j.remote %} · remote{% endif %}
-      {% if j.seniority %} · {{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }} ({{ j.seniority_why }}){% endif %}
-      · posted {{ (j.posted_at or j.first_seen)[:10] }}
+      · {{ j.location }}{% if j.remote %} · {{ _('remote') }}{% endif %}
+      {% if j.seniority %} · {{ _('junior–mid') if j.seniority == 'junior-mid' else _('senior') }} ({{ j.seniority_why|reason }}){% endif %}
+      · {{ _('posted {date}', date=(j.posted_at or j.first_seen)[:10]) }}
     </p>
     <div class="row">{{ job_status(j, "/jobs") }}
     {% if j.status in ['new', 'interested'] %}
     <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="applied"><input type="hidden" name="next" value="/jobs">
-      <button title="You applied: move it to Applications">Applied</button></form>
+      <button title="{{ _('You applied: move it to Applications') }}">{{ _('Applied') }}</button></form>
     {% endif %}
     {% if j.status == 'new' %}
     <form class="inline" method="post" action="/jobs/{{ j.id }}/status"><input type="hidden" name="status" value="ignored"><input type="hidden" name="next" value="/jobs">
-      <button title="Doesn't fit: hide it from new postings">Not interested</button></form>
+      <button title="{{ _("Doesn't fit: hide it from new postings") }}">{{ _('Not interested') }}</button></form>
     {% endif %}
-    <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">Open posting ↗</a></div>
+    <a class="btn primary" href="{{ j.url }}" target="_blank" rel="noopener">{{ _('Open posting ↗') }}</a></div>
   </div>
 </div>
 
 {% if j.remote_check %}
-<div class="panel check-note"><b>Check remote before applying.</b> This posting doesn't say whether they hire someone
-  living in {{ home_city }}. Ask the recruiter first, for example: <i>"I'm based in {{ home_city }} and would be glad
-  to work remotely as a contractor or through an EOR. Is that an option for this role?"</i></div>
+<div class="panel check-note">{{ _("<b>Check remote before applying.</b> This posting doesn't say whether they hire someone living in {city}. Ask the recruiter first, for example: <i>“I'm based in {city} and would be glad to work remotely as a contractor or through an EOR. Is that an option for this role?”</i>", city=home_city) }}</div>
 {% endif %}
 
 <div class="cols">
   <div>
     <div class="panel">
-      <div class="row spread"><h2>Claude's take</h2>
-        <form method="post" action="/jobs/{{ j.id }}/assess"><button data-busy="Assessing…">{{ 'Re-assess' if a else 'Assess fit' }}</button></form></div>
+      <div class="row spread"><h2>{{ _("Claude's take") }}</h2>
+        <form method="post" action="/jobs/{{ j.id }}/assess"><button data-busy="{{ _('Assessing…') }}">{{ _('Re-assess') if a else _('Assess fit') }}</button></form></div>
       {{ task_state('assess:' ~ j.id) }}
       {% if a %}
-        <p><span class="pill {{ a.verdict }}">{{ a.verdict }} · {{ a.fit }}/10</span> {{ a.summary }}</p>
-        <div class="label">Why you fit</div><ul class="tight">{% for x in a.why or [] %}<li>{{ x }}</li>{% endfor %}</ul>
-        <div class="label">Gaps</div><ul class="tight">{% for x in a.gaps or [] %}<li>{{ x }}</li>{% endfor %}</ul>
-        <div class="label">Lead with</div><p>{{ a.angle }}</p>
-      {% else %}<p class="meta">Not assessed yet. Takes ~20 seconds.</p>{% endif %}
+        <p><span class="pill {{ a.verdict }}">{{ _(a.verdict) }} · {{ a.fit }}/10</span> {{ a.summary }}</p>
+        <div class="label">{{ _('Why you fit') }}</div><ul class="tight">{% for x in a.why or [] %}<li>{{ x }}</li>{% endfor %}</ul>
+        <div class="label">{{ _('Gaps') }}</div><ul class="tight">{% for x in a.gaps or [] %}<li>{{ x }}</li>{% endfor %}</ul>
+        <div class="label">{{ _('Lead with') }}</div><p>{{ a.angle }}</p>
+      {% else %}<p class="meta">{{ _('Not assessed yet. Takes ~20 seconds.') }}</p>{% endif %}
     </div>
 
     <div class="panel" id="messages">
-      <div class="row spread"><h2>Messages</h2>
-        <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="Drafting…">{{ 'Redraft all' if d else 'Draft all' }}</button></form></div>
+      <div class="row spread"><h2>{{ _('Messages') }}</h2>
+        <form method="post" action="/jobs/{{ j.id }}/draft"><button class="primary" data-busy="{{ _('Drafting…') }}">{{ _('Redraft all') if d else _('Draft all') }}</button></form></div>
       {{ task_state('draft:' ~ j.id) }}
-      <p class="meta">Draft only what you need. You edit and send them yourself.</p>
-      {% for kind, label, keys in [('cover', 'Cover note', ['subject', 'cover_note']),
-                                   ('recruiter', 'LinkedIn note to the recruiter', ['linkedin_note_recruiter']),
-                                   ('manager', 'Message to the hiring manager', ['message_hiring_manager'])] %}
+      <p class="meta">{{ _('Draft only what you need. You edit and send them yourself.') }}</p>
+      {% for kind, label, keys in [('cover', _('Cover note'), ['subject', 'cover_note']),
+                                   ('recruiter', _('LinkedIn note to the recruiter'), ['linkedin_note_recruiter']),
+                                   ('manager', _('Message to the hiring manager'), ['message_hiring_manager'])] %}
       {% set have = d and d.get(keys[-1]) %}
       <div class="row spread msg-head">
         <b>{{ label }}</b>
         <form method="post" action="/jobs/{{ j.id }}/draft"><input type="hidden" name="kind" value="{{ kind }}">
-          <button data-busy="Drafting…" {{ 'disabled' if tasks.get('draft:' ~ j.id ~ ':' ~ kind) == 'running' }}>{{ 'Redraft' if have else 'Draft' }}</button></form>
+          <button data-busy="{{ _('Drafting…') }}" {{ 'disabled' if tasks.get('draft:' ~ j.id ~ ':' ~ kind) == 'running' }}>{{ _('Redraft') if have else _('Draft') }}</button></form>
       </div>
       {{ task_state('draft:' ~ j.id ~ ':' ~ kind) }}
       {% if have %}
       <form method="post" action="/jobs/{{ j.id }}/drafts" class="edit-draft">
-        {% for k in keys %}{{ draft_field('Subject' if k == 'subject' else 'Text', k, d.get(k), 1 if k == 'subject' else 4 if kind == 'recruiter' else 9) }}{% endfor %}
-        <button class="save" disabled>Saved</button>
+        {% for k in keys %}{{ draft_field(_('Subject') if k == 'subject' else _('Text'), k, d.get(k), 1 if k == 'subject' else 4 if kind == 'recruiter' else 9) }}{% endfor %}
+        <button class="save" disabled>{{ _('Saved') }}</button>
       </form>
       {% endif %}
       {% endfor %}
-      {% if company %}<p class="meta">Find the people on the <a href="/companies/{{ company.id }}">{{ company.name }} page</a>.</p>{% endif %}
+      {% if company %}<p class="meta">{{ _('Find the people on the <a href="/companies/{id}">{name} page</a>.', id=company.id, name=company.name) }}</p>{% endif %}
     </div>
 
-    <div class="panel"><h2>Description</h2><div class="desc">{{ j.description or 'No description fetched for this posting. Open the posting to read it.' }}</div></div>
+    <div class="panel"><h2>{{ _('Description') }}</h2><div class="desc">{{ j.description or _('No description fetched for this posting. Open the posting to read it.') }}</div></div>
   </div>
 
   <div>
     <div class="panel">
-      <div class="label">Salary</div>
+      <div class="label">{{ _('Salary') }}</div>
       <div class="stat" style="font-size:22px; margin:2px 0 4px">{{ pay or '—' }}</div>
-      <div class="meta">{{ 'Read from the description: check it there' if pay_from_desc
-                         else 'From the job board' if pay else 'Not stated in the posting' }}</div>
+      <div class="meta">{{ _('Read from the description: check it there') if pay_from_desc
+                         else _('From the job board') if pay else _('Not stated in the posting') }}</div>
     </div>
     <div class="panel">
-      <h2>Score breakdown</h2>
-      <ul class="tight">{% for r in j.reasons|loads([]) %}<li>{{ r }}</li>{% endfor %}</ul>
-      <p class="meta">Source: {{ j.source }}{% for o in others %} · <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.source }}</a>{% endfor %}</p>
+      <h2>{{ _('Score breakdown') }}</h2>
+      <ul class="tight">{% for r in j.reasons|loads([]) %}<li>{{ r|reason }}</li>{% endfor %}</ul>
+      <p class="meta">{{ _('Source:') }} {{ j.source }}{% for o in others %} · <a href="{{ o.url }}" target="_blank" rel="noopener">{{ o.source }}</a>{% endfor %}</p>
     </div>
     <div class="panel">
-      <h2>Notes</h2>
-      <form method="post" action="/jobs/{{ j.id }}/notes"><textarea name="notes">{{ j.notes or '' }}</textarea><p><button>Save</button></p></form>
+      <h2>{{ _('Notes') }}</h2>
+      <form method="post" action="/jobs/{{ j.id }}/notes"><textarea name="notes">{{ j.notes or '' }}</textarea><p><button>{{ _('Save') }}</button></p></form>
     </div>
   </div>
 </div>
@@ -99,11 +97,12 @@
 try {
   const back = sessionStorage.getItem("backTo");
   if (back) {
-    const names = { today: "Today", jobs: "Jobs", applications: "Applications", companies: "Companies" };
+    const names = {{ {'today': _('Today'), 'jobs': _('Jobs'), 'applications': _('Applications'), 'companies': _('Companies'),
+                      'company': _('Company'), 'back': _('Back')}|tojson }};
     const parts = back.split("?")[0].split("/");
     const link = document.getElementById("back");
     link.href = back;
-    link.textContent = "← " + (parts[1] === "companies" && parts[2] ? "Company" : names[parts[1]] || "Back");
+    link.textContent = "← " + (parts[1] === "companies" && parts[2] ? names.company : names[parts[1]] || names.back);
     document.querySelectorAll('input[name="next"]').forEach((i) => (i.value = back));
   }
 } catch {}

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ 'pt-PT' if lang == 'pt' else 'en' }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -14,7 +14,7 @@
   const path = location.pathname;
   if (!["/today", "/jobs", "/applications", "/companies"].includes(path)) return;
   try {
-    const key = "filters:" + path;
+    const key = "filters:{{ user or '' }}:" + path;
     if (location.search) return localStorage.setItem(key, location.search);
     const saved = localStorage.getItem(key);
     if (saved) {
@@ -59,10 +59,21 @@ header { display: flex; align-items: center; gap: 28px; padding: 0 24px; height:
 header .brand { display: flex; align-items: center; gap: 8px; font-weight: 700; letter-spacing: -.02em; font-size: 15px; text-decoration: none; }
 header .brand img { width: 20px; height: 20px; }
 header nav { display: flex; gap: 2px; align-self: stretch; }
-header nav a { display: flex; align-items: center; padding: 0 10px; text-decoration: none; color: var(--pencil); font-weight: 500;
-               box-shadow: inset 0 -2px 0 transparent; transition: color .15s, box-shadow .15s; }
-header nav a:hover { color: var(--ink); }
-header nav a.on { color: var(--ink); box-shadow: inset 0 -2px 0 var(--pen); }
+header nav a, header .icon-btn { position: relative; display: flex; align-items: center; justify-content: center; width: 42px;
+               text-decoration: none; color: var(--pencil); box-shadow: inset 0 -2px 0 transparent; transition: color .15s, box-shadow .15s; }
+header nav a:hover, header .icon-btn:hover { color: var(--ink); }
+header nav a.on { color: var(--pen); box-shadow: inset 0 -2px 0 var(--pen); }
+header svg.i { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+/* Icon labels: shown under the icon on hover or keyboard focus (and read by screen readers via aria-label) */
+[data-tip]::after { content: attr(data-tip); position: absolute; top: calc(100% + 6px); left: 50%; translate: -50% -4px; z-index: 5;
+                    font: 500 12px/1 var(--sans); white-space: nowrap; color: var(--ink); background: var(--well); padding: 6px 8px;
+                    border-radius: 5px; box-shadow: 0 0 0 1px var(--rule), 0 6px 18px rgba(0,0,0,.35);
+                    opacity: 0; pointer-events: none; transition: opacity .12s, translate .12s var(--ease); }
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; translate: -50% 0; }
+header .who { display: flex; align-items: center; gap: 2px; align-self: stretch; }
+header .who .name { font: 500 12px var(--mono); color: var(--pencil); padding-left: 6px; }
+header .icon-btn { height: 100%; background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
+header .icon-btn:hover { background: none; }
 header .right { margin-left: auto; display: flex; gap: 12px; align-items: center; color: var(--pencil); font-size: 12px; }
 header .right a { text-decoration: none; }
 main { max-width: 1180px; margin: 0 auto; padding: 28px 24px 64px; }
@@ -237,31 +248,54 @@ a.tally:hover .label, a.tally:hover .n { color: var(--pen); }
 <body>
 <header>
   <a class="brand" href="/"><img src="/favicon.svg" alt="">jobhunt</a>
-  <nav>
-    <a href="/today" class="{{ 'on' if request.path.startswith('/today') }}">Today</a>
-    <a href="/jobs" class="{{ 'on' if request.path.startswith('/jobs') }}">Jobs</a>
-    <a href="/applications" class="{{ 'on' if request.path.startswith('/applications') }}">Applications</a>
-    <a href="/companies" class="{{ 'on' if request.path.startswith('/companies') }}">Companies</a>
-    <a href="/profile" class="{{ 'on' if request.path.startswith('/profile') }}">Profile</a>
+  {% if user or not multi_user %}
+  {% set icons = {
+    'today': '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+    'jobs': '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>',
+    'applications': '<path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>',
+    'companies': '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M12 6h.01M16 6h.01M8 10h.01M12 10h.01M16 10h.01M8 14h.01M12 14h.01M16 14h.01"/>',
+    'profile': '<circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/>',
+  } %}
+  <nav aria-label="{{ _('Main') }}">
+    {% for key, label in [('today', _('Today')), ('jobs', _('Jobs')), ('applications', _('Applications')),
+                          ('companies', _('Companies')), ('profile', _('Profile'))] %}
+    <a href="/{{ key }}" class="{{ 'on' if request.path.startswith('/' ~ key) }}" aria-label="{{ label }}" data-tip="{{ label }}"
+       {{ 'aria-current=page' if request.path.startswith('/' ~ key) }}><svg class="i" viewBox="0 0 24 24" aria-hidden="true">{{ icons[key]|safe }}</svg></a>
+    {% endfor %}
   </nav>
   <div class="right">
-    {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="See what the fetch is doing">{{ 'Cancelling, finishing the current request' if fetch_cancelling else 'Fetching: ' ~ fetch_step }} →</a>
-    {% else %}<a href="/fetch" class="meta">Last fetch</a>{% endif %}
+    {% if fetching %}<a class="working" id="fetch-status" href="/fetch" title="{{ _('See what the fetch is doing') }}">{{ _('Cancelling, finishing the current request') if fetch_cancelling else _('Fetching: {step}', step=_(fetch_step)) }} →</a>
+    {% else %}<a href="/fetch" class="meta">{{ _('Last fetch') }}</a>{% endif %}
     {% set running = claude_running %}
-    {% if running %}<span class="working">{{ running }} Claude task{{ 's' if running > 1 }} running</span>{% endif %}
+    {% if running %}<span class="working">{{ _('{n} Claude task running', n=running) if running == 1 else _('{n} Claude tasks running', n=running) }}</span>{% endif %}
     <form class="inline" id="fetch-form" method="post" action="{{ '/fetch/cancel' if fetching else '/fetch' }}">
-      {% if fetching %}<button id="fetch-btn" {{ 'disabled' if fetch_cancelling }}>{{ 'Cancelling…' if fetch_cancelling else 'Cancel' }}</button>
-      {% else %}<button id="fetch-btn" class="primary" title="Search every source for new postings">Search</button>{% endif %}
+      {% if fetching %}<button id="fetch-btn" {{ 'disabled' if fetch_cancelling }}>{{ _('Cancelling…') if fetch_cancelling else _('Cancel') }}</button>
+      {% else %}<button id="fetch-btn" class="primary" title="{{ _('Search every source for new postings') }}">{{ _('Search') }}</button>{% endif %}
     </form>
+    {% if user %}
+    <div class="who">
+      <span class="name">{{ user }}</span>
+      <form class="inline" method="post" action="/logout" style="display:flex; align-self:stretch">
+        <button class="icon-btn" aria-label="{{ _('Log out') }}" data-tip="{{ _('Log out') }}"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></button>
+      </form>
+    </div>
+    {% endif %}
   </div>
+  {% endif %}
 </header>
 <main>
-{% if not has_profile and request.path != '/profile' %}
-<div class="panel check-note"><b>Set up your profile first.</b> Postings are ranked against it.
-  <a href="/profile">Upload your CV or fill it in →</a></div>
+{% if (user or not multi_user) and not has_profile and request.path != '/profile' %}
+<div class="panel check-note">{{ _('<b>Set up your profile first.</b> Postings are ranked against it.') }}
+  <a href="/profile">{{ _('Upload your CV or fill it in →') }}</a></div>
 {% endif %}
 {% block body %}{% endblock %}</main>
 <script>
+const T = {{ {
+  'cancelling': _('Cancelling, finishing the current request →'), 'fetching': _('Fetching: {step} →'),
+  'failed': _('Fetch failed: see why →'), 'cancelled': _('Fetch cancelled: reload to see what it found'),
+  'finished': _('Fetch finished: reload to see new postings'), 'search': _('Search'), 'cancellingBtn': _('Cancelling…'),
+  'copied': _('Copied'), 'copy': _('Copy'), 'saveChanges': _('Save changes'),
+}|tojson }};
 // While a fetch runs, keep the header's step up to date without reloading the page.
 const fetchStatus = document.getElementById("fetch-status");
 if (fetchStatus) {
@@ -270,16 +304,15 @@ if (fetchStatus) {
       const s = await (await fetch("/fetch/status")).json();
       const btn = document.getElementById("fetch-btn");
       if (s.running) {
-        fetchStatus.textContent = s.cancelling ? "Cancelling, finishing the current request →" : `Fetching: ${s.step} →`;
-        if (s.cancelling) { btn.textContent = "Cancelling…"; btn.disabled = true; }
+        fetchStatus.textContent = s.cancelling ? T.cancelling : T.fetching.replace("{step}", s.step_label || s.step);
+        if (s.cancelling) { btn.textContent = T.cancellingBtn; btn.disabled = true; }
         return;
       }
       clearInterval(poll);
-      fetchStatus.textContent = s.failed ? "Fetch failed: see why →"
-        : s.cancelled ? "Fetch cancelled: reload to see what it found" : "Fetch finished: reload to see new postings";
+      fetchStatus.textContent = s.failed ? T.failed : s.cancelled ? T.cancelled : T.finished;
       fetchStatus.href = s.failed ? "/fetch" : location.href;
       document.getElementById("fetch-form").action = "/fetch";
-      Object.assign(btn, { textContent: "Search", disabled: false, className: "primary" });
+      Object.assign(btn, { textContent: T.search, disabled: false, className: "primary" });
     } catch {}
   }, 3000);
 }
@@ -315,13 +348,13 @@ document.addEventListener("click", (e) => {
   if (!b) return;
   const t = b.parentElement.querySelector(".text");
   navigator.clipboard.writeText("value" in t ? t.value : t.innerText);
-  b.textContent = "Copied"; setTimeout(() => (b.textContent = "Copy"), 1200);
+  b.textContent = T.copied; setTimeout(() => (b.textContent = T.copy), 1200);
 });
 // Edited drafts: the Save button wakes up on a change, the character count follows the text.
 document.addEventListener("input", (e) => {
   const f = e.target.closest("form.edit-draft");
   if (!f) return;
-  Object.assign(f.querySelector(".save"), { disabled: false, textContent: "Save changes", className: "save primary" });
+  Object.assign(f.querySelector(".save"), { disabled: false, textContent: T.saveChanges, className: "save primary" });
   const count = e.target.closest(".draft")?.previousElementSibling?.querySelector(".chars");
   if (count) count.textContent = e.target.value.length;
 });

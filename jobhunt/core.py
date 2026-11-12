@@ -1,13 +1,18 @@
-"""Shared pieces: paths, profile, HTTP client, text helpers, the Job record."""
+"""Shared pieces: paths, users, profile, HTTP client, text helpers, the Job record."""
 
 from __future__ import annotations
 
 import html
+import json
 import logging
+import os
 import re
 import threading
 import time
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
@@ -17,10 +22,8 @@ import yaml
 from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "data"
-DB_PATH = DATA / "jobhunt.db"
-PROFILE_PATH = ROOT / "profile.yaml"
-COMPANIES_PATH = ROOT / "companies.yaml"
+USERS = ROOT / "users"  # one folder per account once `jobhunt user add` has run (git ignores it)
+COMPANIES_PATH = ROOT / "companies.yaml"  # the starter list of tech companies
 
 log = logging.getLogger("jobhunt")
 
@@ -28,6 +31,96 @@ UA = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 )
+
+
+# ---------- users ----------
+# Without a users/ folder the app has one profile: profile.yaml and data/ in the repo, no login (as before
+# accounts existed). With one, every account has its own folder, users/<name>/ (profile.yaml, data/,
+# optionally companies.yaml), and everything that reads or writes your data goes through user_dir(). The
+# current user is set per request (web), per background task, or per process (JOBHUNT_USER, set by
+# `jobhunt --user` and by the fetch the dashboard starts). With accounts and no current user, user_dir()
+# raises instead of guessing: one person's request can never fall back to another person's folder.
+
+USERNAME = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+_USER: ContextVar[str | None] = ContextVar("jobhunt_user", default=None)
+
+
+class NoUser(RuntimeError):
+    pass
+
+
+def multi_user() -> bool:
+    return USERS.is_dir()
+
+
+def current_user() -> str | None:
+    return _USER.get() or os.environ.get("JOBHUNT_USER") or None
+
+
+def account_path(name: str) -> Path:
+    if not USERNAME.match(name or ""):
+        raise NoUser(f"not a valid username: {name!r}")
+    return USERS / name / "account.json"
+
+
+def accounts() -> list[str]:
+    return sorted(p.parent.name for p in USERS.glob("*/account.json")) if multi_user() else []
+
+
+def user_dir() -> Path:
+    if not multi_user():
+        return ROOT
+    name = current_user()
+    if not name:
+        raise NoUser("no user selected: log in, or pass --user")
+    if not account_path(name).is_file():
+        raise NoUser(f"no account called {name!r}")
+    return USERS / name
+
+
+def data_dir() -> Path:
+    d = user_dir() / "data"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def db_path() -> Path:
+    return data_dir() / "jobhunt.db"
+
+
+def profile_path() -> Path:
+    return user_dir() / "profile.yaml"
+
+
+@contextmanager
+def as_user(name: str | None) -> Iterator[None]:
+    """Run a block as `name` (a web request, a background task)."""
+    token = _USER.set(name)
+    try:
+        yield
+    finally:
+        _USER.reset(token)
+
+
+def check_password(name: str, password: str) -> bool:
+    from werkzeug.security import check_password_hash
+
+    try:
+        acc = json.loads(account_path(name).read_text())
+    except (NoUser, OSError, ValueError):
+        return False
+    return check_password_hash(acc.get("password", ""), password)
+
+
+def set_password(name: str, password: str) -> None:
+    from werkzeug.security import generate_password_hash
+
+    path = account_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    acc = json.loads(path.read_text()) if path.exists() else {"created": time.strftime("%Y-%m-%d %H:%M:%S")}
+    acc["password"] = generate_password_hash(password)
+    path.write_text(json.dumps(acc, indent=1))
+    path.chmod(0o600)
 
 
 @dataclass
@@ -55,21 +148,37 @@ def load_profile() -> dict:
 
 
 def load_seed_companies() -> list[dict]:
-    return yaml.safe_load(COMPANIES_PATH.read_text()) or []
+    """Companies to always watch: users/<you>/companies.yaml if you have one, else the repo's starter list
+    when your field uses it (it's tech companies)."""
+    own = user_dir() / "companies.yaml"
+    if multi_user() and own.is_file():
+        path = own
+    elif load_profile().get("seed_companies", True):
+        path = COMPANIES_PATH
+    else:
+        return []
+    return yaml.safe_load(path.read_text()) or []
 
 
-@cache
 def cv_text(stack: str | None = None) -> str:
     """Your CV as text: the one uploaded on the Profile page, or `cv_file` in profile.yaml. For a Node/TypeScript
     posting (stack "node"), `cv_file_node` when you have a second CV for those roles."""
-    if (DATA / "cv.txt").exists():
-        return (DATA / "cv.txt").read_text()
+    return _cv_text(str(user_dir()), stack)
+
+
+@cache
+def _cv_text(folder: str, stack: str | None) -> str:  # cached per user folder
+    if (data_dir() / "cv.txt").exists():
+        return (data_dir() / "cv.txt").read_text()
     prof = load_profile()
     path = Path((stack == "node" and prof.get("cv_file_node")) or prof.get("cv_file") or "").expanduser()
     if not path.is_file():
         return ""
     raw = path.read_text()
     return html_to_text(raw) if path.suffix in {".html", ".htm"} else raw
+
+
+cv_text.cache_clear = _cv_text.cache_clear  # type: ignore[attr-defined]
 
 
 # ---------- text ----------
@@ -202,6 +311,13 @@ UNKNOWN_COUNTRY = "Unknown"
 
 def ascii_lower(s: str) -> str:
     return unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode().lower()
+
+
+def fold(s: str) -> str:
+    """Lowercase without accents, for matching words: "Psicóloga Clínica" -> "psicologa clinica". Other non-ASCII
+    characters become spaces, so "Python’s" stays two words instead of becoming "pythons"."""
+    s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+    return re.sub(r"[^\x00-\x7f]", " ", s).lower()
 
 
 _COUNTRY_TERMS = [(ascii_lower(term), country) for country, extra in _COUNTRIES.items()

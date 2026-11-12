@@ -14,7 +14,7 @@ import time
 from collections.abc import Iterator
 
 from ..core import Http, Job, log, ts_to_iso
-from ..scoring import is_engineering_title
+from ..scoring import is_relevant_title
 
 SIZES = {  # Wellfound size buckets -> rough headcount ceiling
     "SIZE_1_10": 10, "SIZE_11_50": 50, "SIZE_51_200": 200, "SIZE_201_500": 500,
@@ -67,7 +67,7 @@ def wellfound(http: Http, profile: dict) -> Iterator[Job]:
                         "stage": stage, "blurb": st.get("highConcept") or ""}
                 for ref in st.get("highlightedJobListings") or []:
                     j = data.get(ref.get("__ref", ""), {})
-                    if not j or str(j.get("id")) in seen or not is_engineering_title(j.get("title", "")):
+                    if not j or str(j.get("id")) in seen or not is_relevant_title(j.get("title", "")):
                         continue
                     seen.add(str(j["id"]))
                     accepted = j.get("acceptedRemoteLocationNames") or []
@@ -103,7 +103,7 @@ def yc_jobs(http: Http, profile: dict) -> Iterator[Job]:
         except (KeyError, ValueError):
             continue
         for j in postings:
-            if not is_engineering_title(j.get("title", "")):
+            if not is_relevant_title(j.get("title", "")):
                 continue
             facts = [j.get("companyOneLiner", ""), f"Type: {j.get('roleSpecificType', '')}",
                      f"Skills: {', '.join(j.get('skills') or [])}", f"Experience: {j.get('minExperience') or 'any'}",

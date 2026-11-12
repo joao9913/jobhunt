@@ -6,14 +6,9 @@ import json
 import re
 import sqlite3
 
-from .core import REMOTE_NO_COUNTRY, UNKNOWN_COUNTRY, ascii_lower, countries, has_term, load_profile
+from .core import REMOTE_NO_COUNTRY, UNKNOWN_COUNTRY, ascii_lower, countries, fold, has_term, load_profile
 
-ENG_TITLE = re.compile(
-    r"engineer|developer|programmer|software|backend|back-end|python|django|node(?:\.?js)?|typescript|devops|\bsre\b|"
-    r"platform|full.?stack|data|integration|\bapi\b|technical lead|tech lead|desenvolvedor|programador|"
-    r"engenheiro|entwickler",
-    re.I,
-)
+_GATE: re.Pattern | None = None  # the field's title gate, for this process's fetch (see use_profile)
 
 
 REMOTE_EU = re.compile(
@@ -160,9 +155,22 @@ def posting_language(text: str) -> str:
     return max(counts, key=counts.get)
 
 
-def is_engineering_title(title: str) -> bool:
-    return bool(ENG_TITLE.search(title))
+def use_profile(profile: dict) -> None:
+    """Set the title gate the sources use for this fetch (one user per fetch process)."""
+    global _GATE
+    _GATE = re.compile(profile["field_def"]["title_gate"], re.I)
 
+
+def is_relevant_title(title: str) -> bool:
+    """A cheap first filter the sources apply before storing a posting: could this title be in your field?"""
+    if _GATE is None:
+        use_profile(load_profile())
+    return bool(_GATE.search(title or ""))
+
+
+
+COUNTRY_LANGUAGE = {"Portugal": "pt", "Brazil": "pt", "Spain": "es", "France": "fr", "Belgium": "fr", "Germany": "de",
+                    "Austria": "de", "Switzerland": "de", "Netherlands": "nl", "Italy": "it", "Poland": "pl"}
 
 # Regions named in a title mean the role is only open there.
 TITLE_REGIONS = ["apac", "latam", "latin america", "north america", "americas", "us only", "usa only", "united states",
@@ -174,12 +182,16 @@ class Scorer:
         p = profile or load_profile()
         self.p = p
         t = p["titles"]
-        self.include = [s.lower() for s in t["include"]]
-        self.exclude = [s.lower() for s in t["exclude"]]
+        self.include = [fold(s) for s in t["include"]]
+        self.required = [fold(s) for s in t.get("required") or []]
+        self.unticked = [fold(s) for s in t.get("unticked") or []]
+        self.ticked = [fold(s) for s in t.get("ticked") or []]
+        self.reject_label = t.get("reject_label", "backend/dev role")
+        self.exclude = [fold(s) for s in t["exclude"]]
         self.exclude_re = [re.compile(r, re.I) for r in t.get("exclude_regex", [])]
-        self.title_bonus = {k.lower(): v for k, v in (t.get("bonus") or {}).items()}
-        self.title_penalty = {k.lower(): v for k, v in (t.get("penalty") or {}).items()}
-        self.skills = {k.lower(): v for k, v in p["skills"].items()}
+        self.title_bonus = {fold(k): v for k, v in (t.get("bonus") or {}).items()}
+        self.title_penalty = {fold(k): v for k, v in (t.get("penalty") or {}).items()}
+        self.skills = {fold(k): v for k, v in p["skills"].items()}
         self.red_flags = [(re.compile(f["pattern"], re.I), f["points"], f["reason"]) for f in p.get("red_flags", [])]
         loc = p["location_match"]
         self.home = loc["home"]
@@ -189,7 +201,9 @@ class Scorer:
         self.remote_ok = loc["remote_ok"]
         self.remote_reject = loc["remote_reject"]
         self.city, self.country_name, self.places = p["home_city"], p["country"], p["country_places"]
-        self.must_have = [s.lower() for s in p.get("must_have") or []]
+        self.must_have = [fold(s) for s in p.get("must_have") or []]
+        # A remote posting written in a language other than English or your country's is for local hires there.
+        self.home_langs = {"en", COUNTRY_LANGUAGE.get(p["country"], "pt")}
         self.excluded_companies = {s.lower() for s in p.get("exclude_companies", [])}
         self.my_years = p.get("experience_years", 1)
         self.level_wanted = p.get("seniority") or "any"
@@ -199,18 +213,26 @@ class Scorer:
         title = (job["title"] or "").lower()
         desc = (job["description"] or "").lower()
         location = (job["location"] or "").lower()
+        # Words are matched without accents: "Psicóloga Clínica" and "psicologa clinica" are the same.
+        ftitle, fdesc = fold(title), fold(desc)
         reasons: list[str] = []
 
         if (job["company"] or "").lower().strip() in self.excluded_companies:
             return 0, [], "excluded company"
         for word in self.exclude:
-            if has_term(title, word):
+            if has_term(ftitle, word):
                 return 0, [], f"title: {word}"
         for rx in self.exclude_re:
             if rx.search(title):
                 return 0, [], f"title: {rx.pattern}"
-        if not any(has_term(title, w) for w in self.include):
-            return 0, [], "title not a backend/dev role"
+        if self.required:
+            if not any(has_term(ftitle, w) for w in self.required):
+                return 0, [], f"title not a {self.reject_label}"
+            unticked = next((w for w in self.unticked if has_term(ftitle, w)), None)
+            if unticked and not any(has_term(ftitle, w) for w in self.ticked):
+                return 0, [], f"title: {unticked}"
+        elif not any(has_term(ftitle, w) for w in self.include):
+            return 0, [], f"title not a {self.reject_label}"
         region = next((w for w in TITLE_REGIONS if has_term(title, w)), None)
         if region:  # e.g. "Full Stack Engineer (APAC Remote)": the location field often doesn't say
             return 0, [], f"title: {region} only"
@@ -230,20 +252,20 @@ class Scorer:
             reasons.append(loc_reason)
 
         for word, pts in self.title_bonus.items():
-            if has_term(title, word):
+            if has_term(ftitle, word):
                 score += pts
                 reasons.append(f"title +{word}")
         for word, pts in self.title_penalty.items():
-            if word.strip(" .") and (word in title if not word.isalpha() else has_term(title, word)):
+            if word.strip(" .") and (word in ftitle if not word.isalpha() else has_term(ftitle, word)):
                 score -= pts
                 reasons.append(f"title -{word.strip()}")
 
-        hits = [s for s in self.skills if has_term(desc, s) or has_term(title, s)]
+        hits = [s for s in self.skills if has_term(fdesc, s) or has_term(ftitle, s)]
         skill_pts = sum(self.skills[s] for s in hits)
         score += min(skill_pts, 55)
         if hits:
             reasons.append("skills: " + ", ".join(s for s in hits if self.skills[s] > 0))
-        if desc and self.must_have and not any(has_term(desc, w) or has_term(title, w) for w in self.must_have):
+        if desc and self.must_have and not any(has_term(fdesc, w) or has_term(ftitle, w) for w in self.must_have):
             score -= 15
             reasons.append(f"no {' / '.join(self.must_have)} mentioned")
         if not desc:
@@ -257,7 +279,7 @@ class Scorer:
 
         flagged: set[str] = set()
         for rx, pts, why in self.red_flags:
-            if why not in flagged and rx.search(desc):
+            if why not in flagged and (rx.search(desc) or rx.search(fdesc)):
                 flagged.add(why)
                 score -= pts
                 reasons.append(f"-{why}")
@@ -325,7 +347,7 @@ class Scorer:
                 # "Remote" shown with a city/country elsewhere: sometimes EU-wide, sometimes "must live here".
                 where = location[:40]
                 lang = posting_language(f"{title} {desc}")
-                if lang not in ("en", "pt"):
+                if lang not in self.home_langs:
                     return False, 0, f"remote in {where}, posting in {lang}: local hires only", False
                 if lives_there:
                     return False, 0, f"remote in {where}, asks you to live there", False
@@ -341,20 +363,37 @@ def _residency_elsewhere(desc: str, country: str) -> bool:
     return bool(m) and not (country and country.lower() in desc[m.start():m.end() + 80])
 
 
-# ---------- stack ----------
-_PY = ["python", "django", "fastapi", "flask"]
-_NODE = ["typescript", "node", "nodejs", "nestjs", "express.js", "expressjs"]
+# ---------- tracks ----------
+# How Applications groups postings: for tech the stack (python / node / both), for psychology the area
+# (clinical, educational...). Stored in the `stack` column. See fields.py `tracks`.
+
+
+def track(title: str, desc: str, field: dict | None = None) -> str | None:
+    f = field or load_profile()["field_def"]
+    title, desc = fold(title or ""), fold(desc or "")
+
+    def hits(text: str) -> list[str]:
+        return [k for k, terms in f["tracks"].items() if any(has_term(text, t) for t in terms)]
+
+    if f["track_scope"] == "title_then_text":
+        found = hits(title) or hits(desc)
+    else:
+        found = hits(f"{title} {desc}")
+    if not found:
+        return None
+    return f["track_mixed"] if len(found) > 1 and f["track_mixed"] else found[0]
 
 
 def stack(title: str, desc: str) -> str | None:
-    """Which of your two stacks a posting is for: "python", "node", "both", or None (neither mentioned)."""
-    text = f"{title} {desc}".lower()
-    py, node = any(has_term(text, w) for w in _PY), any(has_term(text, w) for w in _NODE)
-    return "both" if py and node else "python" if py else "node" if node else None
+    """The tech field's track: "python", "node", "both", or None (neither mentioned)."""
+    from .fields import TECH
+
+    return track(title, desc, TECH)
 
 
 def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:
     scorer = scorer or Scorer()
+    field = scorer.p["field_def"]
     rows = conn.execute("SELECT id, company, title, description, location, remote FROM jobs").fetchall()
     for r in rows:
         s, reasons, rejected = scorer.score(r)
@@ -363,7 +402,7 @@ def rescore_all(conn: sqlite3.Connection, scorer: Scorer | None = None) -> int:
             """UPDATE jobs SET score = ?, reasons = ?, rejected = ?, remote_check = ?, seniority = ?, seniority_why = ?,
                    stack = ? WHERE id = ?""",
             (s, json.dumps(reasons), rejected, int(rejected is None and scorer.remote_check(r)), level, level_why,
-             stack(r["title"] or "", r["description"] or ""), r["id"]),
+             track(r["title"] or "", r["description"] or "", field), r["id"]),
         )
     conn.commit()
     return len(rows)

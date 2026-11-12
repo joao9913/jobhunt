@@ -1,9 +1,19 @@
-"""Local dashboard (http://127.0.0.1:5055). Claude steps run in background threads; pages auto-refresh."""
+"""The dashboard (http://127.0.0.1:5055, or your network with accounts). Claude steps run in background threads,
+fetches in their own process; pages auto-refresh.
+
+With accounts (users/), every page needs a login and runs as that user: core.as_user() is set for the request and
+for each background task it starts, so all reads and writes go to that user's folder.
+"""
 
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import subprocess
+import sys
 import threading
+import time
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
@@ -11,42 +21,72 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import quote_plus
 
-from flask import Flask, abort, g, jsonify, redirect, render_template, request, url_for
+from flask import Flask, abort, g, jsonify, redirect, render_template, request, session, url_for
+from markupsafe import Markup
 
-from . import core, db, inbox, llm, profile, salary
-from .core import CANCEL, countries, load_profile
+from . import core, db, fields, i18n, inbox, llm, profile, salary
+from .core import ROOT, as_user, countries, current_user, load_profile, multi_user
 
 _pool = ThreadPoolExecutor(3)
-_tasks: dict[str, str] = {}  # key -> "running" | "error: ..."
+_tasks: dict[str, str] = {}  # "user|key" -> "running" | "error: ..."
+_procs: dict[str, subprocess.Popen] = {}  # user -> the fetch process the dashboard started for them
 _lock = threading.Lock()
 
 
+def _tkey(key: str) -> str:
+    return f"{current_user() or ''}|{key}"
+
+
+def _my_tasks() -> dict[str, str]:
+    """This user's background tasks, by key ("cv", "assess:12"...)."""
+    prefix = _tkey("")
+    with _lock:
+        return {k[len(prefix):]: v for k, v in _tasks.items() if k.startswith(prefix)}
+
+
 def _run(key: str, fn, *args) -> None:
+    user, key = current_user(), _tkey(key)
     with _lock:
         if _tasks.get(key) == "running":
             return
         _tasks[key] = "running"
 
     def work():
-        conn = db.connect()
-        try:
-            fn(conn, *args)
-            with _lock:
-                _tasks.pop(key, None)
-        except Exception as e:  # surfaced on the page
-            traceback.print_exc()
-            with _lock:
-                _tasks[key] = f"error: {e}"
-        finally:
-            conn.close()
+        with as_user(user):  # the task runs as whoever started it, in its own thread
+            conn = db.connect()
+            try:
+                fn(conn, *args)
+                with _lock:
+                    _tasks.pop(key, None)
+            except Exception as e:  # surfaced on the page
+                traceback.print_exc()
+                with _lock:
+                    _tasks[key] = f"error: {e}"
+            finally:
+                conn.close()
 
     _pool.submit(work)
 
 
-def _fetch_task(conn) -> None:
-    from .pipeline import fetch
+def _fetching() -> bool:
+    proc = _procs.get(current_user() or "")
+    return proc is not None and proc.poll() is None
 
-    fetch()
+
+def _start_fetch() -> None:
+    """Run `jobhunt fetch` for you in its own process (like a fetch from the terminal): its threads can't mix
+    users up, and it shows here through the runs table like any other fetch."""
+    user = current_user() or ""
+    with _lock:
+        if _fetching():
+            return
+        env = {**os.environ, "JOBHUNT_USER": user} if user else dict(os.environ)
+        log = open(core.data_dir() / "fetch.log", "a")  # noqa: SIM115
+        proc = subprocess.Popen([sys.executable, "-m", "jobhunt.cli", "fetch"], cwd=ROOT, env=env,
+                                stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+        proc.started_at = time.time()  # type: ignore[attr-defined]
+        _procs[user] = proc
+        log.close()
 
 
 def _rescore_task(conn) -> None:
@@ -122,20 +162,123 @@ def _page_url(pg: Page, page: int) -> str:
     return url_for(request.endpoint, **args)
 
 
+def _secret_key() -> str:
+    path = core.USERS / ".secret_key"
+    if not path.exists():
+        path.write_text(secrets.token_hex(32))
+        path.chmod(0o600)
+    return path.read_text().strip()
+
+
+def _lang() -> str:
+    """The page language: your profile's, or before login the browser's."""
+    if "lang" not in g:
+        if multi_user() and not current_user():
+            g.lang = request.accept_languages.best_match(["en", "pt"]) or "en"
+        else:
+            g.lang = load_profile()["language"]
+    return g.lang
+
+
+def _(text: str, **kw) -> Markup:
+    """Translate interface text (see i18n.py). The text is trusted; values passed in are escaped. Without values,
+    {placeholders} stay as they are (for the page's scripts to fill in)."""
+    out = Markup(i18n.t(text, _lang()))
+    return out.format(**kw) if kw else out
+
+
+def _people_searches(name: str, p: dict) -> dict[str, str]:
+    """LinkedIn people searches for the company page, by field: label -> keywords."""
+    where = p["country"]
+    if p["field"] == "psychology":
+        return {
+            "Clinical / technical director": f'"{name}" ("Diretor Clínico" OR "Diretora Clínica" OR "Diretor Técnico" '
+                                             f'OR "Diretora Técnica")',
+            "Psychology coordination": f'"{name}" (Coordenador OR Coordenadora) Psicologia',
+            "HR / recruitment": f'"{name}" ("Recursos Humanos" OR Recrutamento OR "Talent Acquisition")',
+            f"Psychologists ({where or 'anywhere'})": f'"{name}" Psicólogo {where}'.strip(),
+        }
+    role = {"fullstack": "full stack", "ml": "machine learning"}.get(p["roles"][0], p["roles"][0]) + " engineer"
+    return {
+        "CTO / Head of Engineering": f'"{name}" (CTO OR "Head of Engineering" OR "VP Engineering")',
+        "Engineering managers": f'"{name}" "Engineering Manager"',
+        "Tech recruiters": f'"{name}" ("Technical Recruiter" OR "Talent Acquisition")',
+        f"Engineers ({where or 'anywhere'})": f'"{name}" {role} {where}'.strip(),
+    }
+
+
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config["TEMPLATES_AUTO_RELOAD"] = True  # template edits show on reload, no restart (set before jinja_env exists)
     app.jinja_env.filters["loads"] = _loads
     app.jinja_env.filters["q"] = quote_plus
+    app.jinja_env.filters["reason"] = lambda r: i18n.reason(r, _lang())
+    app.jinja_env.globals["_"] = _
+    if multi_user():
+        app.secret_key = _secret_key()
+        app.config.update(SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_HTTPONLY=True,
+                          PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30)
+
+    # ---------- who you are ----------
+
+    @app.before_request
+    def login_required():
+        g.user_token = None
+        if not multi_user() or request.endpoint in ("login", "login_post", "favicon", "static"):
+            return None
+        user = session.get("user")
+        if not user or user not in core.accounts():
+            session.clear()
+            nxt = request.full_path if request.method == "GET" else "/"
+            return redirect(url_for("login", next=nxt.rstrip("?")))
+        g.user_token = core._USER.set(user)
+        return None
+
+    @app.teardown_request
+    def forget_user(_exc):
+        token = g.pop("user_token", None)
+        if token is not None:
+            core._USER.reset(token)
+
+    @app.get("/login")
+    def login():
+        if not multi_user():
+            return redirect("/")
+        return render_template("login.html", error=request.args.get("error"), next=request.args.get("next", "/"))
+
+    @app.post("/login")
+    def login_post():
+        name = request.form.get("user", "").strip().lower()
+        nxt = request.form.get("next", "/")
+        nxt = nxt if nxt.startswith("/") and not nxt.startswith("//") else "/"
+        if not core.check_password(name, request.form.get("password", "")):
+            time.sleep(1)  # slows down guessing
+            return redirect(url_for("login", error=1, next=nxt))
+        session.clear()
+        session["user"] = name
+        session.permanent = True
+        return redirect(nxt)
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
 
     @app.context_processor
     def globals_():
+        if multi_user() and not current_user():  # the login page
+            return {"lang": _lang(), "user": None, "multi_user": True}
         state = _fetch_state()
-        claude_running = sum(1 for k, v in _tasks.items() if k not in ("fetch", "rescore") and v == "running")
+        tasks = _my_tasks()
+        claude_running = sum(1 for k, v in tasks.items() if k not in ("fetch", "rescore") and v == "running")
         prof = load_profile()
+        f = prof["field_def"]
         return {"home_city": prof["home_city"], "home_country": prof["country"], "has_profile": profile.exists(),
-                "tasks": dict(_tasks), "fetching": state["running"], "fetch_step": state["step"],
-                "fetch_cancelling": state["cancelling"],
+                "tasks": tasks, "fetching": state["running"], "fetch_step": state["step"],
+                "fetch_cancelling": state["cancelling"], "lang": _lang(), "user": current_user(),
+                "multi_user": multi_user(), "field": f, "words": f["words"], "field_name": prof["field"],
+                "kinds_of_company": f["company_kinds"], "highlight_kind": f["highlight_kind"],
+                "track_labels": f["track_labels"],
                 "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
                 "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url,
@@ -186,16 +329,18 @@ def create_app() -> Flask:
             values.update({k: v for k, v in suggested.items() if k != "location"})
             values["location"] = {**values["location"], **suggested.get("location", {})}
         cv = core.cv_text()
-        return render_template("profile.html", p=values, suggested=suggested, roles=profile.ROLES,
-                               seniority_choices=profile.SENIORITY_CHOICES,
+        return render_template("profile.html", p=values, suggested=suggested, roles=fields.get(values["field"])["roles"],
+                               seniority_choices=profile.SENIORITY_CHOICES, field_choices=profile.FIELD_CHOICES,
+                               language_choices=profile.LANGUAGE_CHOICES,
                                countries=sorted(core._COUNTRIES), cv_chars=len(cv),
-                               cv_name=next((f.name for f in sorted(core.DATA.glob("cv_upload.*"))), None),
+                               cv_name=next((f.name for f in sorted(core.data_dir().glob("cv_upload.*"))), None),
                                saved=request.args.get("saved"), error=request.args.get("error"))
 
     @app.post("/profile")
     def profile_save():
         f = request.form
         profile.save({
+            "field": profile.editable()["field"], "language": profile.editable()["language"],
             **{k: f.get(k, "").strip() for k in ("name", "email", "linkedin_url", "github_url", "story", "experience_note")},
             "experience_years": f.get("experience_years", 0, type=int),
             "roles": f.getlist("roles"),
@@ -215,14 +360,32 @@ def create_app() -> Flask:
         _run("rescore", _rescore_task)  # every posting is ranked again against the new profile
         return redirect(url_for("profile_page", saved=1))
 
+    @app.post("/profile/settings")
+    def profile_settings():
+        """Field and language: saved at once. A new field re-ranks everything with its job types and titles."""
+        f = request.form
+        current = profile.editable()
+        changes = {}
+        if f.get("field") in profile.FIELD_CHOICES and f["field"] != current["field"]:
+            new = fields.get(f["field"])
+            changes = {"field": f["field"], "roles": list(new["default_roles"]),
+                       "language": current["language"] if profile.read().get("language") else new["default_language"]}
+        if f.get("language") in profile.LANGUAGE_CHOICES:
+            changes["language"] = f["language"]
+        if changes:
+            profile.save({**current, **changes})
+            if "field" in changes:
+                _run("rescore", _rescore_task)
+        return redirect(url_for("profile_page"))
+
     @app.post("/profile/cv")
     def profile_cv():
         upload = request.files.get("cv")
         suffix = Path(upload.filename or "").suffix.lower() if upload else ""
         if suffix not in (".pdf", ".docx", ".txt", ".md", ".html", ".htm"):
-            return redirect(url_for("profile_page", error="Upload a PDF, Word (.docx), HTML, Markdown or text file."))
-        core.DATA.mkdir(exist_ok=True)
-        incoming = core.DATA / f"cv_incoming{suffix}"  # the old CV stays until this one reads fine
+            return redirect(url_for("profile_page", error="upload-type"))
+        data = core.data_dir()
+        incoming = data / f"cv_incoming{suffix}"  # the old CV stays until this one reads fine
         upload.save(incoming)
         try:
             text = profile.cv_to_text(incoming)
@@ -230,12 +393,11 @@ def create_app() -> Flask:
             text = ""
         if len(text) < 200:
             incoming.unlink()
-            return redirect(url_for("profile_page", error="Couldn't read text from that file. If it's a scanned PDF, "
-                                                          "upload a text-based PDF or a Word file."))
-        for old in core.DATA.glob("cv_upload.*"):
+            return redirect(url_for("profile_page", error="upload-unreadable"))
+        for old in data.glob("cv_upload.*"):
             old.unlink()
-        incoming.rename(core.DATA / f"cv_upload{suffix}")
-        profile.CV_TEXT.write_text(text)
+        incoming.rename(data / f"cv_upload{suffix}")
+        profile.cv_text_path().write_text(text)
         core.cv_text.cache_clear()
         _run("cv", lambda conn: profile.from_cv(text))
         return redirect(url_for("profile_page"))
@@ -295,26 +457,28 @@ def create_app() -> Flask:
 
     @app.post("/fetch")
     def fetch_now():
-        if _tasks.get("fetch") != "running":
-            CANCEL.clear()  # here rather than in fetch(), so a cancel pressed before it really starts still counts
-        _run("fetch", _fetch_task)
+        _start_fetch()
         return redirect(url_for("fetch_page"))
 
     def _fetch_state() -> dict:
         """The latest fetch: running or not, its current step and log. Also covers terminal/scheduled fetches."""
         r = conn().execute("SELECT * FROM runs ORDER BY id DESC LIMIT 1").fetchone()
-        if _tasks.get("fetch") == "running" and (r is None or r["finished"]):  # started, run row not written yet
+        started_here = _procs.get(current_user() or "")
+        if _fetching() and (r is None or r["finished"] or r["started"] < time.strftime(
+                "%Y-%m-%d %H:%M:%S", time.localtime(started_here.started_at))):  # started, run row not written yet
             return {"running": True, "step": "Starting", "lines": [], "started": db.now(), "finished": None,
-                    "failed": False, "cancelled": False, "cancelling": CANCEL.is_set()}
+                    "failed": False, "cancelled": False, "cancelling": False}
         if r is None:
             return {"running": False, "step": "", "lines": [], "started": None, "finished": None, "failed": False,
                     "cancelled": False, "cancelling": False}
         p = _loads(r["progress"], {})
         lines = p.get("lines", [])
-        failed = _tasks.get("fetch", "").startswith("error") or any(x["level"] == "error" for x in lines)
-        # An unfinished run older than 3 hours crashed without saying so.
+        failed = any(x["level"] == "error" for x in lines)
+        # An unfinished run the dashboard started whose process is gone, or one older than 3 hours, crashed
+        # without saying so.
         stale = conn().execute("SELECT ? < datetime('now', 'localtime', '-3 hour')", (r["started"],)).fetchone()[0]
-        running = not r["finished"] and not failed and (_tasks.get("fetch") == "running" or not stale)
+        gone = started_here is not None and not _fetching()
+        running = not r["finished"] and not failed and (_fetching() or not (stale or gone))
         return {"running": running, "step": p.get("step", "Starting"), "lines": lines, "started": r["started"],
                 "finished": r["finished"], "failed": failed or (not r["finished"] and not running),
                 "cancelled": bool(_loads(r["summary"], {}).get("cancelled")),
@@ -324,18 +488,19 @@ def create_app() -> Flask:
     def fetch_cancel():
         c = conn()
         c.execute("UPDATE runs SET cancel = 1 WHERE finished IS NULL AND id = (SELECT MAX(id) FROM runs)")
-        c.commit()
-        if _tasks.get("fetch") == "running":
-            CANCEL.set()  # running in this process: stop now instead of on the next progress poll
+        c.commit()  # the fetch process sees it within ~2 seconds (pipeline.RunProgress)
         return redirect(request.referrer or url_for("fetch_page"))
 
     @app.get("/fetch")
     def fetch_page():
-        return render_template("fetch.html", run=_fetch_state())
+        return render_template("fetch.html", run=_labelled(_fetch_state()))
 
     @app.get("/fetch/status")
     def fetch_status():
-        return jsonify(_fetch_state())
+        return jsonify(_labelled(_fetch_state()))
+
+    def _labelled(state: dict) -> dict:
+        return {**state, "step_label": i18n.t(state["step"], _lang())}
 
     # ---------- jobs ----------
 
@@ -454,7 +619,9 @@ def create_app() -> Flask:
         return render_template("applications.html", pg=Page(rows, 20), tab=tab, q=q, today=db.today(),
                                status=status, per_status=n, date_from=date_from, date_to=date_to,
                                filtered=bool(q or status or date_from or date_to),
-                               stats=db.applications_by_stack(c), no_reply_days=load_profile().get("no_reply_after_days", 28),
+                               stats=db.applications_by_stack(c, [*load_profile()["field_def"]["tracks"],
+                                                                     load_profile()["field_def"]["track_mixed"]]),
+                               no_reply_days=load_profile().get("no_reply_after_days", 28),
                                n_ongoing=sum(n.get(s, 0) for s in db.ACTIVE_STATUSES),
                                n_archive=sum(n.get(s, 0) for s in db.CLOSED_STATUSES))
 
@@ -527,16 +694,7 @@ def create_app() -> Flask:
                               FROM jobs WHERE company_key = ?) WHERE rn = 1
                ORDER BY rejected IS NOT NULL, score DESC LIMIT 50""", (co["key"],)).fetchall()
         log_ = c.execute("SELECT * FROM outreach WHERE company_id = ? ORDER BY sent_on DESC", (cid,)).fetchall()
-        name = co["name"]
-        p = load_profile()
-        where, role = p["country"], {"fullstack": "full stack", "ml": "machine learning"}.get(p["roles"][0], p["roles"][0])
-        role += " engineer"
-        searches = {
-            "CTO / Head of Engineering": f'"{name}" (CTO OR "Head of Engineering" OR "VP Engineering")',
-            "Engineering managers": f'"{name}" "Engineering Manager"',
-            "Tech recruiters": f'"{name}" ("Technical Recruiter" OR "Talent Acquisition")',
-            f"Engineers ({where or 'anywhere'})": f'"{name}" {role} {where}'.strip(),
-        }
+        searches = _people_searches(co["name"], load_profile())
         return render_template("company.html", co=co, jobs=jobs_, log=log_, searches=searches,
                                research=_loads(co["research"], {}), drafts=_loads(co["drafts"], {}),
                                today=db.today())

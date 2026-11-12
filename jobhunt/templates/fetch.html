@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Fetch · jobhunt{% endblock %}
+{% block title %}{{ _('Fetch') }} · jobhunt{% endblock %}
 {% block body %}
 <div class="panel">
   <div class="row spread">
@@ -9,7 +9,7 @@
       <div class="meta" id="run-time"></div>
     </div>
     <div id="assess" style="min-width:220px; display:none">
-      <div class="label">Claude assessments</div>
+      <div class="label">{{ _('Claude assessments') }}</div>
       <div class="bar"><div id="assess-bar"></div></div>
       <div class="meta" id="assess-text"></div>
     </div>
@@ -17,25 +17,29 @@
 </div>
 
 <div class="panel">
-  <h2>What it's doing</h2>
+  <h2>{{ _("What it's doing") }}</h2>
   <div id="log" class="runlog"></div>
-  <p class="empty" id="log-empty" style="display:none">No log for this fetch yet. Press <b>Search</b> to watch one live.</p>
+  <p class="empty" id="log-empty" style="display:none">{{ _('No log for this fetch yet. Press <b>Search</b> to watch one live.') }}</p>
 </div>
 
 <script>
+const F = {{ {'cancelling': _('Cancelling'), 'running': _('Running'), 'failed': _('Failed'), 'cancelled': _('Cancelled'),
+              'finished': _('Finished'), 'started': _('Started {time}'), 'runningFor': _('running for {d}'),
+              'took': _('took {d}'), 'done': _('{n} of {total} done')}|tojson }};
 const logEl = document.getElementById("log");
 const ago = (s) => { const m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
 
 function render(run) {
-  const state = run.cancelling ? "Cancelling" : run.running ? "Running" : run.failed ? "Failed"
-    : run.cancelled ? "Cancelled" : run.finished ? "Finished" : "";
+  const state = run.cancelling ? F.cancelling : run.running ? F.running : run.failed ? F.failed
+    : run.cancelled ? F.cancelled : run.finished ? F.finished : "";
   document.getElementById("run-state").textContent = state;
   document.getElementById("run-state").className = "label " + (run.running ? "working" : run.failed ? "error" : "");
-  document.getElementById("run-step").textContent = run.started ? run.step : "";
+  document.getElementById("run-step").textContent = run.started ? (run.step_label || run.step) : "";
   const start = run.started ? new Date(run.started.replace(" ", "T")) : null;
   const end = run.finished ? new Date(run.finished.replace(" ", "T")) : new Date();
   document.getElementById("run-time").textContent = start
-    ? `Started ${run.started.slice(11, 16)} · ${run.running ? "running for" : "took"} ${ago(Math.round((end - start) / 1000))}` : "";
+    ? F.started.replace("{time}", run.started.slice(11, 16)) + " · "
+      + (run.running ? F.runningFor : F.took).replace("{d}", ago(Math.round((end - start) / 1000))) : "";
   document.getElementById("log-empty").style.display = run.lines.length ? "none" : "";
 
   // Claude progress comes from the "[n/m]" lines the assess step logs.
@@ -46,7 +50,7 @@ function render(run) {
   if (total) {
     const n = counts.length ? +counts.at(-1)[1] : 0;
     document.getElementById("assess-bar").style.width = `${(100 * n) / total}%`;
-    document.getElementById("assess-text").textContent = `${n} of ${total} done`;
+    document.getElementById("assess-text").textContent = F.done.replace("{n}", n).replace("{total}", total);
   }
 
   const nearBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 40;

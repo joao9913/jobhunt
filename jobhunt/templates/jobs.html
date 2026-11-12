@@ -1,49 +1,50 @@
 {% extends "base.html" %}
-{% from "macros.html" import score, job_status, pager, level_select with context %}
-{% block title %}Jobs · jobhunt{% endblock %}
+{% from "macros.html" import score, job_status, pager, level_select, status_label, company_pills, verdict, level_pill, remote_pill with context %}
+{% block title %}{{ _('Jobs') }} · jobhunt{% endblock %}
 {% block body %}
 <form class="filters" method="get">
   <span class="tabs">
     {% for s in TRIAGE_STATUSES + ['all'] %}
-    <a href="?status={{ s }}&min={{ min_score }}&q={{ q|q }}&remote={{ remote }}&startup={{ startup }}&country={{ country|q }}&rcheck={{ rcheck }}&level={{ level }}" class="{{ 'on' if s == status }}">{{ STATUS_LABELS.get(s, s) }}</a>
+    <a href="?status={{ s }}&min={{ min_score }}&q={{ q|q }}&remote={{ remote }}&startup={{ startup }}&country={{ country|q }}&rcheck={{ rcheck }}&level={{ level }}" class="{{ 'on' if s == status }}">{{ status_label(s) }}</a>
     {% endfor %}
-    <a href="/applications">applied →</a>
+    <a href="/applications">{{ _('applied →') }}</a>
   </span>
   <input type="hidden" name="status" value="{{ status }}">
-  <input name="q" value="{{ q }}" placeholder="search title, company, text">
-  <select name="remote" class="autosubmit">
-    <option value="" {{ 'selected' if not remote }}>remote + on-site</option>
-    <option value="1" {{ 'selected' if remote == '1' }}>remote only</option>
-    <option value="0" {{ 'selected' if remote == '0' }}>on-site / hybrid only</option>
+  <input name="q" value="{{ q }}" placeholder="{{ _('search title, company, text') }}">
+  <select name="remote" class="autosubmit" aria-label="{{ _('Remote') }}">
+    <option value="" {{ 'selected' if not remote }}>{{ _('remote + on-site') }}</option>
+    <option value="1" {{ 'selected' if remote == '1' }}>{{ _('remote only') }}</option>
+    <option value="0" {{ 'selected' if remote == '0' }}>{{ _('on-site / hybrid only') }}</option>
   </select>
   {{ level_select(level, per_level) }}
-  <select name="rcheck" class="autosubmit">
-    <option value="" {{ 'selected' if not rcheck }}>from {{ home_city }}: confirmed + to check</option>
-    <option value="0" {{ 'selected' if rcheck == '0' }}>from {{ home_city }}: confirmed only</option>
-    <option value="1" {{ 'selected' if rcheck == '1' }}>from {{ home_city }}: to check only</option>
+  <select name="rcheck" class="autosubmit" aria-label="{{ _('Remote check') }}">
+    <option value="" {{ 'selected' if not rcheck }}>{{ _('from {city}: confirmed + to check', city=home_city) }}</option>
+    <option value="0" {{ 'selected' if rcheck == '0' }}>{{ _('from {city}: confirmed only', city=home_city) }}</option>
+    <option value="1" {{ 'selected' if rcheck == '1' }}>{{ _('from {city}: to check only', city=home_city) }}</option>
   </select>
-  <select name="startup" class="autosubmit">
-    <option value="" {{ 'selected' if not startup }}>all companies</option>
-    <option value="1" {{ 'selected' if startup == '1' }}>startups only</option>
+  {% if field_name == 'tech' %}
+  <select name="startup" class="autosubmit" aria-label="{{ _('Companies') }}">
+    <option value="" {{ 'selected' if not startup }}>{{ _('all companies') }}</option>
+    <option value="1" {{ 'selected' if startup == '1' }}>{{ _('startups only') }}</option>
   </select>
-  <select name="country" class="autosubmit">
-    <option value="" {{ 'selected' if not country }}>all countries</option>
+  {% endif %}
+  <select name="country" class="autosubmit" aria-label="{{ _('Country') }}">
+    <option value="" {{ 'selected' if not country }}>{{ _('all countries') }}</option>
     {% for name, n in per_country %}
-    <option value="{{ name }}" {{ 'selected' if name == country }}>{{ name }} ({{ n }})</option>
+    <option value="{{ name }}" {{ 'selected' if name == country }}>{{ _(name) }} ({{ n }})</option>
     {% endfor %}
-    {% if country and country not in per_country|map('first') %}<option value="{{ country }}" selected>{{ country }} (0)</option>{% endif %}
+    {% if country and country not in per_country|map('first') %}<option value="{{ country }}" selected>{{ _(country) }} (0)</option>{% endif %}
   </select>
-  <label class="meta">min score <input name="min" type="number" value="{{ min_score }}" style="width:64px"></label>
-  <button>Filter</button>
-  <a href="?all" class="meta">clear filters</a>
+  <label class="meta">{{ _('min score') }} <input name="min" type="number" value="{{ min_score }}" style="width:64px"></label>
+  <button>{{ _('Filter') }}</button>
+  <a href="?all" class="meta">{{ _('clear filters') }}</a>
 </form>
 
 <div class="panel flush">
 {% if pg.items %}
 <table>
-  <tr><th></th><th>Role</th><th>Location</th><th>Why</th><th></th></tr>
+  <tr><th></th><th>{{ _('Role') }}</th><th>{{ _('Location') }}</th><th>{{ _('Why') }}</th><th></th></tr>
   {% for j in pg.items %}
-  {% set a = j.assessment|loads %}
   {% set co = kinds.get(j.company_key) %}
   <tr>
     <td class="s">{{ score(j.score) }}</td>
@@ -51,21 +52,17 @@
       <a href="/jobs/{{ j.id }}">{{ j.title }}</a>
       <div class="meta">
         {% if co %}<a href="/companies/{{ co.id }}">{{ j.company }}</a>{% else %}{{ j.company }}{% endif %}
-        {% if co and co.kind == 'non-tech' %} <span class="pill nontech">in-house tech</span>{% endif %}
-        {% if co and co.startup %} <span class="pill startup">startup{% if co.stage %} · {{ co.stage }}{% endif %}</span>{% endif %}
-        {% if j.seniority %} <span class="pill level-{{ j.seniority }}" title="{{ j.seniority_why }}">{{ 'junior–mid' if j.seniority == 'junior-mid' else 'senior' }}</span>{% endif %}
-        {% if j.remote_check %} <span class="pill check" title="Doesn't say if they hire from {{ home_country or 'your country' }}: ask the recruiter before applying">check remote</span>{% endif %}
-        {% if a %} <span class="pill {{ a.verdict }}">{{ a.verdict }} {{ a.fit }}/10</span>{% endif %}
+        {%- if co %}{{ company_pills(co) }}{% endif %}{{ level_pill(j) }}{{ remote_pill(j) }}{{ verdict(j.assessment|loads) }}
       </div>
     </td>
-    <td class="meta" style="max-width:200px">{{ j.location }}{% if j.remote %} · remote{% endif %}</td>
-    <td class="meta" style="max-width:320px">{{ (j.reasons|loads([]))[:3]|join(' · ') }}</td>
+    <td class="meta" style="max-width:200px">{{ j.location }}{% if j.remote %} · {{ _('remote') }}{% endif %}</td>
+    <td class="meta" style="max-width:320px">{% for r in (j.reasons|loads([]))[:3] %}{{ ' · ' if not loop.first }}{{ r|reason }}{% endfor %}</td>
     <td class="end">
       <span class="meta">{{ j.source }}{% if j.n_sources > 1 %} +{{ j.n_sources - 1 }}{% endif %} · {{ (j.posted_at or j.first_seen)[:10] }}</span><br>
       {% if j.status != 'ignored' %}
       <form class="inline" method="post" action="/jobs/{{ j.id }}/status">
         <input type="hidden" name="status" value="ignored">
-        <button class="dismiss" title="Mark as not interested">Not interested</button>
+        <button class="dismiss" title="{{ _('Mark as not interested') }}">{{ _('Not interested') }}</button>
       </form>
       {% endif %}
       {{ job_status(j) }}
@@ -74,6 +71,6 @@
   {% endfor %}
 </table>
 {{ pager(pg) }}
-{% else %}<p class="empty">No postings match. Try a lower min score or another tab.</p>{% endif %}
+{% else %}<p class="empty">{{ _('No postings match. Try a lower min score or another tab.') }}</p>{% endif %}
 </div>
 {% endblock %}
