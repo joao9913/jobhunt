@@ -4,13 +4,27 @@
 {% block body %}
 <form class="filters" method="get">
   <span class="tabs">
-    <a href="?tab=ongoing&q={{ q|q }}" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
-    <a href="?tab=archive&q={{ q|q }}" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
+    {% set keep = 'q=' ~ (q|q) ~ '&from=' ~ date_from ~ '&to=' ~ date_to %}
+    <a href="?tab=ongoing&{{ keep }}" class="{{ 'on' if tab == 'ongoing' }}">ongoing ({{ n_ongoing }})</a>
+    <a href="?tab=archive&{{ keep }}" class="{{ 'on' if tab == 'archive' }}">archive ({{ n_archive }})</a>
   </span>
   <input type="hidden" name="tab" value="{{ tab }}">
   <input type="search" name="q" value="{{ q }}" placeholder="search role, company, location, notes" autofocus>
-  <button>Search</button>
-  {% if q %}<a class="btn" href="?tab={{ tab }}">Clear</a>{% endif %}
+  <select name="status" class="autosubmit">
+    <option value="">all {{ tab }} ({{ n_archive if tab == 'archive' else n_ongoing }})</option>
+    {% for group, statuses in [('Ongoing', ACTIVE_STATUSES), ('Archive', CLOSED_STATUSES)] %}
+    <optgroup label="{{ group }}">
+      {% for s in statuses %}
+      <option value="{{ s }}" {{ 'selected' if s == status }}>{{ STATUS_LABELS.get(s, s) }} ({{ per_status.get(s, 0) }})</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+  <label class="meta" title="The day you applied">applied from
+    <input type="date" name="from" value="{{ date_from }}" max="{{ date_to or today }}"></label>
+  <label class="meta">to <input type="date" name="to" value="{{ date_to }}" min="{{ date_from }}" max="{{ today }}"></label>
+  <button>Filter</button>
+  {% if filtered %}<a class="btn" href="?tab={{ tab }}">Clear</a>{% endif %}
 </form>
 
 {% if stats is defined and stats %}
@@ -49,8 +63,8 @@
   {% endfor %}
 </table>
 {{ pager(pg) }}
-{% elif q %}<p class="empty">No {{ tab }} applications match “{{ q }}”.{% if (n_archive if tab == 'ongoing' else n_ongoing) %}
-  <a href="?tab={{ 'archive' if tab == 'ongoing' else 'ongoing' }}&q={{ q|q }}">See {{ n_archive if tab == 'ongoing' else n_ongoing }} in {{ 'archive' if tab == 'ongoing' else 'ongoing' }} →</a>{% endif %}</p>
+{% elif filtered %}<p class="empty">No {{ tab }} applications match these filters.{% if not status and (n_archive if tab == 'ongoing' else n_ongoing) %}
+  <a href="?tab={{ 'archive' if tab == 'ongoing' else 'ongoing' }}&q={{ q|q }}&from={{ date_from }}&to={{ date_to }}">See {{ n_archive if tab == 'ongoing' else n_ongoing }} in {{ 'archive' if tab == 'ongoing' else 'ongoing' }} →</a>{% endif %}</p>
 {% elif tab == 'archive' %}<p class="empty">Nothing archived yet.</p>
 {% else %}<p class="empty">No ongoing applications. Set a posting to "applied" on its page and it shows up here.</p>{% endif %}
 </div>

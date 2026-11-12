@@ -7,6 +7,7 @@ import threading
 import traceback
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import date
 from pathlib import Path
 from urllib.parse import quote_plus
 
@@ -105,6 +106,14 @@ def _level_counts(jobs) -> Counter:
     counts = Counter(j["seniority"] or "none" for j in jobs)
     counts[""] = len(jobs)
     return counts
+
+
+def _iso_date(s: str) -> str:
+    """A YYYY-MM-DD date from a date input, or "" if it's empty or not a real date."""
+    try:
+        return date.fromisoformat(s.strip()).isoformat()
+    except ValueError:
+        return ""
 
 
 def _page_url(pg: Page, page: int) -> str:
@@ -412,21 +421,39 @@ def create_app() -> Flask:
     def applications():
         c = conn()
         db.expire_applications(c, load_profile().get("no_reply_after_days", 28))
-        tab = "archive" if request.args.get("tab") == "archive" else "ongoing"
+        status = request.args.get("status", "")
+        status = status if status in db.ACTIVE_STATUSES + db.CLOSED_STATUSES else ""
+        # picking a status opens the tab it belongs to, whichever tab you picked it from
+        tab = ("archive" if status in db.CLOSED_STATUSES else "ongoing") if status else (
+            "archive" if request.args.get("tab") == "archive" else "ongoing")
         statuses = db.CLOSED_STATUSES if tab == "archive" else db.ACTIVE_STATUSES
         order = "closed_on DESC" if tab == "archive" else "applied_on DESC"
         q = request.args.get("q", "").strip()
-        # the search matches role, company, location and your notes; the tab counts follow it
-        match = "(title LIKE ? OR company LIKE ? OR location LIKE ? OR notes LIKE ?)" if q else "1"
-        mparams = [f"%{q}%"] * 4 if q else []
+        date_from, date_to = _iso_date(request.args.get("from", "")), _iso_date(request.args.get("to", ""))
+        # The search matches role, company, location and your notes; the date range is the day you applied.
+        # Tab and status counts follow both.
+        conds, mparams = [], []
+        if q:
+            conds.append("(title LIKE ? OR company LIKE ? OR location LIKE ? OR notes LIKE ?)")
+            mparams += [f"%{q}%"] * 4
+        if date_from:
+            conds.append("applied_on >= ?")
+            mparams.append(date_from)
+        if date_to:
+            conds.append("applied_on <= ?")
+            mparams.append(date_to)
+        match = " AND ".join(conds) or "1"
+        shown = [status] if status else statuses
         rows = c.execute(
             f"""SELECT * FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY dedup_key
                                    ORDER BY length(COALESCE(description,'')) DESC) rn FROM jobs
-                               WHERE status IN ({', '.join('?' * len(statuses))}))
-                WHERE rn = 1 AND {match} ORDER BY {order}, id DESC""", [*statuses, *mparams]).fetchall()
+                               WHERE status IN ({', '.join('?' * len(shown))}))
+                WHERE rn = 1 AND {match} ORDER BY {order}, id DESC""", [*shown, *mparams]).fetchall()
         n = {s: k for s, k in c.execute(
             f"SELECT status, COUNT(DISTINCT dedup_key) FROM jobs WHERE {match} GROUP BY status", mparams)}
         return render_template("applications.html", pg=Page(rows, 20), tab=tab, q=q, today=db.today(),
+                               status=status, per_status=n, date_from=date_from, date_to=date_to,
+                               filtered=bool(q or status or date_from or date_to),
                                stats=db.applications_by_stack(c), no_reply_days=load_profile().get("no_reply_after_days", 28),
                                n_ongoing=sum(n.get(s, 0) for s in db.ACTIVE_STATUSES),
                                n_archive=sum(n.get(s, 0) for s in db.CLOSED_STATUSES))
