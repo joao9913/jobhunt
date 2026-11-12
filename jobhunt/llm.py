@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import sqlite3
 import subprocess
+from pathlib import Path
 
 from . import db
 from .core import cv_text, data_dir, load_profile, log
@@ -20,9 +22,23 @@ class ClaudeError(RuntimeError):
     pass
 
 
+# Where Claude Code installs itself. A dashboard or daily search started by launchd gets a minimal PATH
+# (/usr/bin:/bin...) that has none of these, so look here too.
+CLAUDE_PLACES = ["~/.local/bin/claude", "~/.claude/local/claude", "/opt/homebrew/bin/claude", "/usr/local/bin/claude"]
+
+
+def claude_bin() -> str:
+    found = shutil.which("claude") or next(
+        (str(p) for p in (Path(x).expanduser() for x in CLAUDE_PLACES) if p.is_file()), None)
+    if not found:
+        raise ClaudeError("Claude Code isn't installed on this computer (no `claude` command). Install it from "
+                          "https://claude.com/claude-code and log in once by running `claude` in a terminal.")
+    return found
+
+
 def run_claude(prompt: str, *, web: bool = False, timeout: int = 900) -> str:
     profile = load_profile()
-    cmd = ["claude", "-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config",
+    cmd = [claude_bin(), "-p", "--output-format", "json", "--no-session-persistence", "--strict-mcp-config",
            "--model", profile.get("llm_model", "sonnet")]
     if web:
         cmd += ["--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch", "WebFetch",
