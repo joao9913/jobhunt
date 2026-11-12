@@ -33,6 +33,10 @@ def cmd_fetch(args) -> None:
         return
 
     sources = set(args.only.split(",")) if args.only else None
+    if sources and "netempregos" in sources:  # asked for by name: try it even if it was blocked recently
+        from .sources.portugal import clear_block
+
+        clear_block()
     summary = fetch(sources, resolve_limit=args.resolve)
     if summary.get("cancelled"):
         sys.exit("\nCancelled from the dashboard. Postings found before the cancel are saved.")
@@ -226,7 +230,7 @@ def main() -> None:
 
     p = sub.add_parser("fetch", help="collect postings from every source, discover companies, score")
     p.add_argument("--only", help="comma list: ats,resolve,linkedin,landingjobs,remotive,remoteok,arbeitnow,himalayas,hn,"
-                                  "assess")
+                                  "netempregos,bep,assess")
     p.add_argument("--resolve", type=int, default=60, help="max companies to look up careers boards for")
     p.set_defaults(fn=cmd_fetch)
 

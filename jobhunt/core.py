@@ -226,6 +226,14 @@ def has_term(text: str, term: str) -> bool:
 
 # ---------- countries ----------
 
+# Cities that job sites spell in more than one language: LinkedIn writes "Lisbon" where Net-Empregos writes
+# "Lisboa". A home city written either way matches both.
+CITY_ALIASES: dict[str, list[str]] = {
+    "lisboa": ["lisbon"], "lisbon": ["lisboa"], "porto": ["oporto"], "oporto": ["porto"],
+    "munich": ["munchen", "münchen"], "munchen": ["munich"], "münchen": ["munich"], "cologne": ["koln", "köln"],
+    "koln": ["cologne"], "köln": ["cologne"], "seville": ["sevilla"], "sevilla": ["seville"],
+}
+
 # Country -> extra names and well-known cities/regions that appear without the country ("Berlin", "London").
 _COUNTRIES: dict[str, list[str]] = {
     "Portugal": ["lisbon", "lisboa", "porto", "braga", "coimbra", "aveiro", "leiria", "oeiras", "almada",
@@ -382,10 +390,17 @@ class Http:
         )
 
     def get(self, url: str, *, retries: int = 2, **kw) -> httpx.Response | None:
+        return self._send("GET", url, retries, **kw)
+
+    def post_form(self, url: str, data: dict, *, retries: int = 2) -> httpx.Response | None:
+        """A form POST, as a page's own button sends it (e.g. an ASP.NET search). Retried like get()."""
+        return self._send("POST", url, retries, data=data)
+
+    def _send(self, method: str, url: str, retries: int, **kw) -> httpx.Response | None:
         for attempt in range(retries + 1):
             check_cancel()  # every source goes through here, so this is where a fetch stops
             try:
-                r = self.client.get(url, **kw)
+                r = self.client.request(method, url, **kw)
             except httpx.HTTPError as e:
                 log.debug("GET %s failed: %s", url, e)
                 if attempt == retries:

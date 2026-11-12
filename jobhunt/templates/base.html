@@ -288,6 +288,15 @@ a.tally:hover .label, a.tally:hover .n { color: var(--pen); }
 <div class="panel check-note">{{ _('<b>Set up your profile first.</b> Postings are ranked against it.') }}
   <a href="/profile">{{ _('Upload your CV or fill it in →') }}</a></div>
 {% endif %}
+{% if netempregos_block and request.path in ('/', '/today', '/fetch') %}
+<div class="panel check-note">
+  {{ _('<b>Net-Empregos is asking for a captcha</b> (since {since}), so searches skip it until {until}. To get it back sooner, open it, solve the captcha yourself, then retry.', since=netempregos_block.since, until=netempregos_block.until) }}
+  <div class="row" style="margin-top:8px">
+    <a class="btn primary" href="{{ netempregos_block.url }}" target="_blank" rel="noopener">{{ _('Open Net-Empregos ↗') }}</a>
+    <form class="inline" method="post" action="/fetch/netempregos"><button {{ 'disabled' if fetching }}>{{ _('Retry Net-Empregos') }}</button></form>
+  </div>
+</div>
+{% endif %}
 {% block body %}{% endblock %}</main>
 <script>
 const T = {{ {

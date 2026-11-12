@@ -73,16 +73,17 @@ def _fetching() -> bool:
     return proc is not None and proc.poll() is None
 
 
-def _start_fetch() -> None:
+def _start_fetch(only: str | None = None) -> None:
     """Run `jobhunt fetch` for you in its own process (like a fetch from the terminal): its threads can't mix
-    users up, and it shows here through the runs table like any other fetch."""
+    users up, and it shows here through the runs table like any other fetch. `only`: a comma list of sources."""
     user = current_user() or ""
     with _lock:
         if _fetching():
             return
         env = {**os.environ, "JOBHUNT_USER": user} if user else dict(os.environ)
         log = open(core.data_dir() / "fetch.log", "a")  # noqa: SIM115
-        proc = subprocess.Popen([sys.executable, "-m", "jobhunt.cli", "fetch"], cwd=ROOT, env=env,
+        cmd = [sys.executable, "-m", "jobhunt.cli", "fetch", *(["--only", only] if only else [])]
+        proc = subprocess.Popen(cmd, cwd=ROOT, env=env,
                                 stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         proc.started_at = time.time()  # type: ignore[attr-defined]
         _procs[user] = proc
@@ -282,7 +283,13 @@ def create_app() -> Flask:
                 "claude_running": claude_running, "JOB_STATUSES": db.JOB_STATUSES, "COMPANY_STATUSES": db.COMPANY_STATUSES,
                 "TRIAGE_STATUSES": db.TRIAGE_STATUSES, "ACTIVE_STATUSES": db.ACTIVE_STATUSES,
                 "CLOSED_STATUSES": db.CLOSED_STATUSES, "STATUS_LABELS": db.STATUS_LABELS, "page_url": _page_url,
-                "applied_here": applied_here}
+                "applied_here": applied_here, "netempregos_block": _netempregos_block(prof)}
+
+    def _netempregos_block(prof: dict) -> dict | None:
+        """Net-Empregos is asking this computer for a captcha and your searches use it: say so, with a way out."""
+        from .sources import portugal
+
+        return portugal.block_info() if "netempregos" in prof["sources"] else None
 
     def applied_here(j) -> list:
         """Your other applications at this posting's company (cached for the request)."""
@@ -458,6 +465,12 @@ def create_app() -> Flask:
     @app.post("/fetch")
     def fetch_now():
         _start_fetch()
+        return redirect(url_for("fetch_page"))
+
+    @app.post("/fetch/netempregos")
+    def fetch_netempregos():
+        """After you've solved Net-Empregos' captcha in your browser: search it again now (and assess what's new)."""
+        _start_fetch("netempregos,assess")  # naming it on the command line clears the block it remembers
         return redirect(url_for("fetch_page"))
 
     def _fetch_state() -> dict:

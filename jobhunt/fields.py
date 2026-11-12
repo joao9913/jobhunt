@@ -189,13 +189,15 @@ PSYCHOLOGY = {
     "reject_label": "psychology role",
     "not_titles": ["psicomotricista", "psicomotricidade", "terapeuta da fala", "terapeuta ocupacional",
                    "fisioterapeuta", "enfermeiro", "enfermeira", "comercial", "vendedor", "vendedora", "sales",
-                   "delegado de informacao medica", "professor de psicologia", "docente"],
+                   "delegado de informacao medica", "professor de psicologia", "docente", "professor", "professora",
+                   "professor catedratico", "investigador", "investigadora", "bolseiro", "bolseira"],
     "junior_titles": ["estagio", "estagios", "estagiario", "estagiaria", "estagiario(a)", "ano profissional junior",
                       "intern", "internship", "trainee"],
     "top_titles": ["coordenador", "coordenadora", "coordenacao", "diretor", "diretora", "director", "directora",
                    "head of"],
     "title_gate": r"psic[oó]log|psychol|psicoterap|psychotherap|neuropsic",
-    "sources": ["linkedin", "netempregos", "ats"],
+    "sources": ["linkedin", "netempregos", "bep", "ats"],
+    "bep_searches": ["psicologia"],  # BEP's search knows areas, not job titles (sources/portugal.py)
     "seed_companies": False,
     "remote_default": False,
     "red_flags": [
@@ -207,6 +209,10 @@ PSYCHOLOGY = {
         {"pattern": r"percentagem (das|por|de cada|sobre a?s?) ?consultas?|\b\d{2} ?% (das|por|de cada) consultas?|"
                     r"comissao por consulta|valor por consulta",
          "points": 5, "reason": "paid per consultation"},
+        # Public-sector offers only open to people who already work in the public sector (BEP marks these).
+        {"pattern": r"restrit[oa]s? (?:a|aos) trabalhadores (?:com|detentores? d[eo])[^.\n]{0,30}vinculo de emprego "
+                    r"publico|\bmobilidade (?:interna|na categoria|intercarreiras)\b",
+         "points": 40, "reason": "only for current public employees"},
     ],
     "tracks": {k: v["words"] for k, v in PSY_ROLES.items()},
     "track_scope": "title_then_text",  # the title says the area; the description only when the title doesn't

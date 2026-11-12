@@ -91,10 +91,15 @@ Run them as `uv run jobhunt ...`.
 | Landing.jobs | Portugal tech board. |
 | Himalayas, Remotive, RemoteOK, Arbeitnow | Remote and EU boards. |
 | HN "Who is hiring" | Monthly thread, filtered to your main tech and location. |
-| Net-Empregos | Portugal's biggest general job board (psychology field). Public search pages; a posting is only opened when its title and place already fit, a few seconds apart. Too many requests and the site shows a captcha for a few hours; the search then skips it and says so in the log. |
+| Net-Empregos | Portugal's biggest general job board (psychology field). Public search pages; only your broadest searches run there (its search for "psicologo" already finds "psicologo clinico"), and a posting is only opened when its title and place already fit, a few seconds apart. Too many requests and the site shows a captcha; searches then skip it for 12 hours. Today and the search page say so, with a link to open the site (you solve the captcha yourself) and **Retry Net-Empregos**. |
+| BEP (Bolsa de Emprego Público) | Every public-sector job in Portugal: SNS / ULS hospitals, Segurança Social, councils, schools' and universities' own posts (psychology field). Public pages, a handful of requests a day; offers already read aren't opened again. Offers only open to people who already work in the public sector are flagged and lose 40 points. |
 
-Tech profiles use every source above except Net-Empregos. Psychology profiles use LinkedIn, Net-Empregos and the
-careers boards of companies you research.
+Tech profiles use every source above except Net-Empregos and BEP. Psychology profiles use LinkedIn, Net-Empregos,
+BEP and the careers boards of companies you research.
+
+Psychology job boards that can't be searched for you, so set up their own email alerts: the OPP's Bolsa de Emprego
+(members only), SIGRHE (state schools' hiring of psychologists; needs a login, and each offer is open for only ~3
+working days), IEFP online (blocks automated access), Indeed, Sapo Emprego and Expresso Emprego.
 
 `companies.yaml` is a starter list of companies to always watch, leaning towards Lisbon / Portugal and
 EU-remote. Add or remove companies for your own search.

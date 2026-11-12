@@ -43,6 +43,12 @@ PT: dict[str, str] = {
         "<b>Comece por preencher o perfil.</b> As ofertas são ordenadas com base nele.",
     "Upload your CV or fill it in →": "Carregue o CV ou preencha-o →",
     "Fetch failed: see why →": "A pesquisa falhou: ver porquê →",
+    "<b>Net-Empregos is asking for a captcha</b> (since {since}), so searches skip it until {until}. To get it back "
+    "sooner, open it, solve the captcha yourself, then retry.":
+        "<b>O Net-Empregos está a pedir um captcha</b> (desde as {since}), por isso as pesquisas saltam-no até "
+        "{until}. Para o recuperar mais cedo, abra-o, resolva o captcha e tente de novo.",
+    "Open Net-Empregos ↗": "Abrir o Net-Empregos ↗",
+    "Retry Net-Empregos": "Tentar o Net-Empregos de novo",
     "Fetch cancelled: reload to see what it found": "Pesquisa cancelada: recarregue para ver o que encontrou",
     "Fetch finished: reload to see new postings": "Pesquisa terminada: recarregue para ver as ofertas novas",
     "Copied": "Copiado",
@@ -492,6 +498,7 @@ _REASONS: list[tuple[re.Pattern, str]] = [(re.compile(p), r) for p, r in [
     (r"^-unpaid / volunteer$", "-não remunerado / voluntariado"),
     (r"^-recibos verdes \(no contract\)$", "-recibos verdes (sem contrato)"),
     (r"^-paid per consultation$", "-pago à consulta"),
+    (r"^-only for current public employees$", "-só para quem já tem vínculo público"),
     (r"^excluded company$", "empresa excluída"),
     (r"^title not a (.+)$", r"o título não é de \1"),
     (r"^senior \((.+)\)$", r"sénior (\1)"),

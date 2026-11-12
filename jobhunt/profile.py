@@ -16,7 +16,15 @@ from pathlib import Path
 import yaml
 
 from . import fields
-from .core import _CODES, _COUNTRIES, data_dir, fold, html_to_text, profile_path
+from .core import (
+    _CODES,
+    _COUNTRIES,
+    CITY_ALIASES,
+    data_dir,
+    fold,
+    html_to_text,
+    profile_path,
+)
 
 
 def cv_text_path() -> Path:
@@ -199,6 +207,7 @@ def load() -> dict:
     city, country = loc["city"].strip(), loc["country"].strip()
     code = next((c for c, name in _CODES.items() if name == country), "")
     home = [w.lower() for w in [city, *loc.get("nearby", [])] if w]
+    home += [a for w in home for a in CITY_ALIASES.get(w, []) if a not in home]
     p["home_city"] = city or country or "your city"
     p["country"] = country
     p["country_places"] = [c for c in _COUNTRIES.get(country, []) if c not in home]

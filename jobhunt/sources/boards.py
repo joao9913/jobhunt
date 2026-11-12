@@ -147,7 +147,7 @@ def hn_whos_hiring(http: Http, profile: dict) -> Iterator[Job]:
         )
 
 
-from .portugal import netempregos  # noqa: E402
+from .portugal import bep, netempregos  # noqa: E402
 from .startups import wellfound, yc_jobs  # noqa: E402
 
 BOARDS = {
@@ -160,4 +160,5 @@ BOARDS = {
     "himalayas": himalayas,
     "hn": hn_whos_hiring,
     "netempregos": netempregos,
+    "bep": bep,
 }
