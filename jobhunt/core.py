@@ -161,21 +161,24 @@ def load_seed_companies() -> list[dict]:
 
 
 def cv_text(stack: str | None = None) -> str:
-    """Your CV as text: the one uploaded on the Profile page, or `cv_file` in profile.yaml. For a Node/TypeScript
-    posting (stack "node"), `cv_file_node` when you have a second CV for those roles."""
+    """Your CV as text. A posting whose stack is "node" or "python" gets `cv_file_node` / `cv_file_python` from
+    profile.yaml when that file exists; anything else gets the CV uploaded on the Profile page, then `cv_file`."""
     return _cv_text(str(user_dir()), stack)
 
 
 @cache
 def _cv_text(folder: str, stack: str | None) -> str:  # cached per user folder
+    from .profile import cv_to_text  # profile imports core
+
+    prof = load_profile()
+    key = {"node": "cv_file_node", "python": "cv_file_python"}.get(stack or "")
+    stack_cv = Path(prof.get(key) or "").expanduser() if key else None
+    if stack_cv and stack_cv.is_file():
+        return cv_to_text(stack_cv)
     if (data_dir() / "cv.txt").exists():
         return (data_dir() / "cv.txt").read_text()
-    prof = load_profile()
-    path = Path((stack == "node" and prof.get("cv_file_node")) or prof.get("cv_file") or "").expanduser()
-    if not path.is_file():
-        return ""
-    raw = path.read_text()
-    return html_to_text(raw) if path.suffix in {".html", ".htm"} else raw
+    path = Path(prof.get("cv_file") or "").expanduser()
+    return cv_to_text(path) if path.is_file() else ""
 
 
 cv_text.cache_clear = _cv_text.cache_clear  # type: ignore[attr-defined]
