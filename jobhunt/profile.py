@@ -222,9 +222,10 @@ def load() -> dict:
     li = {**DEFAULTS["linkedin"], **(p.get("linkedin") or {})}
     if "searches" not in li:
         where = country or city
+        # Only your country. LinkedIn's public search ignores the remote filter, so an EU-wide search lists every
+        # developer posting in Europe: 78% of LinkedIn's requests for 0.5% kept (Nov 2026). The remote boards
+        # cover EU-remote roles far better.
         li["searches"] = [{"keywords": t, "location": where} for t in terms if where]
-        if loc.get("remote", True):
-            li["searches"] += [{"keywords": t, "location": "European Union", "remote": True} for t in terms[:2]]
     p["linkedin"] = li
     p.setdefault("himalayas_queries", terms[:3])
     wf = {**DEFAULTS["wellfound"], **(p.get("wellfound") or {})}

@@ -1,8 +1,9 @@
 """LinkedIn's public (logged-out) job search pages.
 
-No login and no account involved, so nothing can get your profile restricted. Requests are spaced out
-(3–6 s). LinkedIn answers 429 now and then even at that pace, and the block clears within seconds to
-minutes, so on a 429 we wait (15 s, doubling up to 5 min) and retry the same request. We only give up
+No login and no account involved, so nothing can get your profile restricted. LinkedIn's tolerance
+changes from day to day (some runs see no 429 at 3–6 s between requests, others get one on nearly every
+request), so the gap between requests adapts: each 429 widens it, a run of answered requests narrows it
+again. On a 429 we also wait (15 s, doubling up to 5 min) and retry the same request, and only give up
 for this run after ~30 minutes of 429s in a row.
 
 Each run searches back to when the last complete run (one that finished every search) started, plus
@@ -34,6 +35,8 @@ def _state():
 MAX_WINDOW = 30 * 86400                # LinkedIn's "posted in the last N seconds" filter, at most 30 days
 OVERLAP = 3600                         # LinkedIn can list a posting a little after its posted time
 BACKOFF = [15, 30, 60, 120, 240, 300, 300, 300, 300, 300]  # waits after consecutive 429s (~33 min total)
+MIN_GAP, MAX_GAP = 4.0, 30.0           # seconds between requests: where the gap starts, and how wide it gets
+_gap = MIN_GAP
 
 
 class RateLimited(Exception):
@@ -47,7 +50,16 @@ def _sleep(seconds: float) -> None:
 
 
 def _pause() -> None:
-    _sleep(random.uniform(3.0, 6.0))
+    _sleep(random.uniform(0.75 * _gap, 1.25 * _gap))
+
+
+def _adapt(rate_limited: bool) -> None:
+    """Widen the gap on a 429; narrow it slowly while requests are answered (~15 in a row halve it)."""
+    global _gap
+    old = _gap
+    _gap = min(MAX_GAP, _gap * 1.5) if rate_limited else max(MIN_GAP, _gap * 0.955)
+    if rate_limited and _gap > old:
+        log.info("  linkedin: slowing down to ~%.0f s between requests", _gap)
 
 
 def _request(http: Http, url: str, **params):
@@ -55,7 +67,10 @@ def _request(http: Http, url: str, **params):
     for wait in [*BACKOFF, None]:
         r = http.get(url, params=params or None, retries=0)
         if r is None or r.status_code != 429:
+            if r is not None:
+                _adapt(False)
             return r
+        _adapt(True)
         if wait is None:
             raise RateLimited
         retry_after = r.headers.get("Retry-After", "")
@@ -159,6 +174,7 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
         for search in cfg.get("searches", []):
             log.info("  linkedin: searching \"%s\" in %s%s", search["keywords"], search["location"],
                      " (remote)" if search.get("remote") else "")
+            pages = listed = fresh = fits = 0  # what this search added, to tell which searches are worth their requests
             for start in range(0, 1000, 10):  # the public search stops serving results at ~1000
                 params = {"keywords": search["keywords"], "location": search["location"], "f_TPR": window,
                           "start": start}
@@ -169,12 +185,17 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                 cards = _cards(page or "")
                 if not cards:
                     break
+                pages += 1
+                listed += len(cards)
                 for c in cards:
                     if c["id"] in seen:
                         continue
                     seen.add(c["id"])
                     desc, criteria = "", []
-                    if c["id"] not in known and (detail_budget is None or detail_budget > 0) and wants_detail({**c, "remote": None}):
+                    fits_rules = c["id"] not in known and wants_detail({**c, "remote": None})
+                    fresh += c["id"] not in known
+                    fits += fits_rules
+                    if fits_rules and (detail_budget is None or detail_budget > 0):
                         desc, criteria = _detail(http, c["id"])
                         if detail_budget is not None:
                             detail_budget -= 1
@@ -186,6 +207,8 @@ def linkedin(http: Http, profile: dict, *, known: set[str], wants_detail, first_
                         description=(desc + ("\n\n" + "\n".join(criteria) if criteria else "")).strip(),
                         tags=criteria, posted_at=c["posted"],
                     )
+            log.info("  linkedin:   %d pages, %d listed, %d new, %d pass your title and location rules",
+                     pages, listed, fresh, fits)
         _mark_complete(started)
     except RateLimited:
         log.warning("LinkedIn kept rate-limiting us for ~30 minutes; stopping LinkedIn for this run (results so far "
